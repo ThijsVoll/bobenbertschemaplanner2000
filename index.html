@@ -21,7 +21,7 @@
         </div>
         <div class="header-actions">
           <button id="generate-btn">Schema genereren</button>
-          <button id="min-fields-calc-button">Velden berkenen</button>
+          <button id="min-fields-calc-button">Velden berekenen</button>
         </div>
       </header>
 
@@ -59,22 +59,28 @@
 
           <section class="field-block">
             <span>Voorkeur wedstrijden</span>
-            <div class="field-row" style="align-items: end; gap: 12px; flex-wrap: wrap;">
-              <label style="min-width: 220px; flex: 1;">
+            <div class="pref-row">
+              <label class="pref-select-wrap">
                 <span>Team A</span>
                 <select id="pref-team-a"></select>
               </label>
-              <label style="min-width: 220px; flex: 1;">
+
+              <label class="pref-select-wrap">
                 <span>Team B</span>
                 <select id="pref-team-b"></select>
               </label>
-              <button id="add-pref-btn" type="button" class="secondary">Add preference</button>
+
+              <button id="add-pref-btn" type="button" class="secondary pref-add-btn">
+                Voorkeur toevoegen
+              </button>
             </div>
             <div id="prefs-editor-empty" class="muted small" style="margin-top: 8px;">
               Eerst teams importeren.
             </div>
             <div id="prefs-list" style="display: grid; gap: 8px; margin-top: 12px;"></div>
           </section>
+
+          
 
           <label class="field-block">
             <textarea id="prefs-json" spellcheck="false" hidden></textarea>
@@ -83,12 +89,27 @@
 
         <section class="panel">
           <h2>Output</h2>
+
           <div id="status" class="status status-info">Ready.</div>
+
           <div class="actions-row">
-            <button id="copy-json" class="secondary">Copy results as JSON</button>
+            <button id="export-excel" class="secondary">Exporteren als Excel</button>
           </div>
+
+          <div class="view-toggle" role="tablist" aria-label="Outputweergave">
+            <button id="view-table-btn" type="button" class="secondary is-active">
+              Tabelweergave
+            </button>
+            <button id="view-visual-btn" type="button" class="secondary">
+              Visuele planning
+            </button>
+          </div>
+
           <div id="summary" class="summary-card"></div>
+
           <div id="schedule-output"></div>
+          <div id="visual-schedule-output" class="hidden"></div>
+
           <div id="remaining-output"></div>
         </section>
       </section>

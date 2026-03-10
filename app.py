@@ -33,6 +33,7 @@ class Match:
 
 VERPLICHTE_WEDSTRIJDEN = {1: 3, 2: 3, 3: 2}
 OPTIONELE_WEDSTRIJDEN = {1: 0, 2: 0, 3: 1}
+OUTPUT_VIEW = "table"
 
 EXAMPLE_TEAMS = [
     {"niveau": 1, "geslacht": "Heren", "naam": "Falcons", "leeftijd": "Jong"},
@@ -311,9 +312,9 @@ def render_results(results: dict) -> None:
 
     summary_el.innerHTML = f"""
       <div class="summary-list">
-        <div class="summary-item"><span class="muted">Total matches</span><strong>{len(matches)}</strong></div>
-        <div class="summary-item"><span class="muted">Rounds used</span><strong>{len(rounds)}</strong></div>
-        <div class="summary-item"><span class="muted">Unmet required slots</span><strong>{sum(results['remaining_required'].values())}</strong></div>
+        <div class="summary-item"><span class="muted">Aantal wedstrijden</span><strong>{len(matches)}</strong></div>
+        <div class="summary-item"><span class="muted">Rondes</span><strong>{len(rounds)}</strong></div>
+        <div class="summary-item"><span class="muted">Ongebruikte slots</span><strong>{sum(results['remaining_required'].values())}</strong></div>
       </div>
     """
 
@@ -337,10 +338,10 @@ def render_results(results: dict) -> None:
         schedule_parts.append(
             f"""
             <section class="round-block">
-              <div class="round-header">Round {ronde}</div>
+              <div class="round-header">Ronde {ronde}</div>
               <table class="match-table">
                 <thead>
-                  <tr><th>Field</th><th>Team A</th><th>Team B</th></tr>
+                  <tr><th>Veld</th><th>Team A</th><th>Team B</th></tr>
                 </thead>
                 <tbody>
                   {''.join(rows)}
@@ -378,6 +379,8 @@ def render_results(results: dict) -> None:
       </section>
     """
 
+    render_visual_schedule(results)
+    set_output_view(OUTPUT_VIEW)
 
 def set_status(message: str, kind: str = "info") -> None:
     el = document.getElementById("status")
@@ -506,6 +509,89 @@ def get_preferences() -> List[List[str]]:
     return prefs
 
 
+def set_output_view(view: str) -> None:
+    global OUTPUT_VIEW
+    OUTPUT_VIEW = view
+
+    table_btn = document.getElementById("view-table-btn")
+    visual_btn = document.getElementById("view-visual-btn")
+    table_el = document.getElementById("schedule-output")
+    visual_el = document.getElementById("visual-schedule-output")
+
+    if view == "visual":
+        table_el.classList.add("hidden")
+        visual_el.classList.remove("hidden")
+        table_btn.classList.remove("is-active")
+        visual_btn.classList.add("is-active")
+    else:
+        visual_el.classList.add("hidden")
+        table_el.classList.remove("hidden")
+        visual_btn.classList.remove("is-active")
+        table_btn.classList.add("is-active")
+
+
+def render_visual_schedule(results: dict) -> None:
+    visual_el = document.getElementById("visual-schedule-output")
+    matches = results["matches"]
+
+    grouped = defaultdict(list)
+    for m in sorted(matches, key=lambda x: (x["ronde"], x["veld"])):
+        grouped[m["ronde"]].append(m)
+
+    if not grouped:
+        visual_el.innerHTML = '<p class="muted">Geen wedstrijden gepland.</p>'
+        return
+
+    round_parts = []
+    for ronde in sorted(grouped):
+        cards = []
+        for m in grouped[ronde]:
+            cards.append(
+                f"""
+                <article class="visual-match-card">
+                  <div class="visual-field-badge">Veld {m['veld']:02d}</div>
+
+                  <div class="visual-team">
+                    {html.escape(m['team_a']['naam'])}
+                    <span class="visual-team-meta">
+                      {html.escape(m['team_a']['geslacht'])} · {html.escape(m['team_a']['leeftijd'])} · Niveau {m['team_a']['niveau']}
+                    </span>
+                  </div>
+
+                  <div class="visual-vs">vs</div>
+
+                  <div class="visual-team">
+                    {html.escape(m['team_b']['naam'])}
+                    <span class="visual-team-meta">
+                      {html.escape(m['team_b']['geslacht'])} · {html.escape(m['team_b']['leeftijd'])} · Niveau {m['team_b']['niveau']}
+                    </span>
+                  </div>
+                </article>
+                """
+            )
+
+        round_parts.append(
+            f"""
+            <section class="visual-round">
+              <div class="visual-round-header">Ronde {ronde}</div>
+              <div class="visual-round-body">
+                {''.join(cards)}
+              </div>
+            </section>
+            """
+        )
+
+    visual_el.innerHTML = f'<div class="visual-board">{"".join(round_parts)}</div>'
+
+
+def on_view_table(*args):
+    set_output_view("table")
+
+
+def on_view_visual(*args):
+    set_output_view("visual")
+
+    
 def set_preferences(prefs: List[List[str]]) -> None:
     document.getElementById("prefs-json").value = json.dumps(prefs, indent=2, ensure_ascii=False)
 
@@ -522,12 +608,12 @@ def populate_preference_dropdowns() -> None:
     if not team_names:
         placeholder_a = document.createElement("option")
         placeholder_a.value = ""
-        placeholder_a.textContent = "Import teams first"
+        placeholder_a.textContent = "Eerst teams importeren"
         select_a.appendChild(placeholder_a)
 
         placeholder_b = document.createElement("option")
         placeholder_b.value = ""
-        placeholder_b.textContent = "Import teams first"
+        placeholder_b.textContent = "Eerst teams importeren"
         select_b.appendChild(placeholder_b)
 
         select_a.disabled = True
@@ -576,7 +662,7 @@ def render_preferences_editor() -> None:
     if not prefs:
         row = document.createElement("div")
         row.className = "muted small"
-        row.textContent = "No preferences added yet."
+        row.textContent = "Nog geen voorkeuren toegevoegd."
         prefs_container.appendChild(row)
         return
 
@@ -643,7 +729,7 @@ async def import_csv_async() -> None:
             teams, indent=2, ensure_ascii=False
         )
         sync_preferences_ui()
-        set_status(f"Imported {len(teams)} teams from {file.name}.", "success")
+        set_status(f"{len(teams)} teams geimporteerd van {file.name}.", "success")
     except Exception as exc:
         console.error(str(exc))
         set_status(f"CSV import error: {exc}", "error")
@@ -655,7 +741,7 @@ def on_teams_csv_selected(*args):
 def load_example_data(*args):
     document.getElementById("teams-json").value = json.dumps(EXAMPLE_TEAMS, indent=2, ensure_ascii=False)
     document.getElementById("prefs-json").value = json.dumps(EXAMPLE_PREFS, indent=2, ensure_ascii=False)
-    sync_preferences_ui()
+    
     set_status("Loaded example dataset.", "success")
 
 
@@ -706,15 +792,20 @@ def bereken_minimaal_aantal_velden(teams, voorkeuren, n_rondes, seed):
 
 
 def read_inputs() -> tuple[list[Team], list[tuple[str, str]], int, int, Optional[int]]:
-    teams_raw = json.loads(document.getElementById("teams-json").value)
-    prefs_raw = json.loads(document.getElementById("prefs-json").value)
+    teams_raw = _safe_load_json_array("teams-json")
+    prefs_raw = _safe_load_json_array("prefs-json")
+
     n_rondes = int(document.getElementById("n-rondes").value)
     n_velden = int(document.getElementById("n-velden").value)
+
     seed_text = document.getElementById("seed").value.strip()
     seed = int(seed_text) if seed_text else None
 
     teams = []
     for item in teams_raw:
+        if not isinstance(item, dict):
+            raise ValueError("Each team must be a JSON object.")
+
         teams.append(
             Team(
                 niveau=int(item["niveau"]),
@@ -726,20 +817,21 @@ def read_inputs() -> tuple[list[Team], list[tuple[str, str]], int, int, Optional
 
     prefs = []
     for pair in prefs_raw:
-        if not isinstance(pair, list) and not isinstance(pair, tuple):
+        if not isinstance(pair, (list, tuple)):
             raise ValueError("Each preference must be a 2-item array, e.g. ['Team A', 'Team B']")
         if len(pair) != 2:
             raise ValueError("Each preference must contain exactly 2 team names.")
+
         prefs.append((str(pair[0]), str(pair[1])))
 
     return teams, prefs, n_rondes, n_velden, seed
-
 
 def on_generate(*args):
     global LAST_RESULT
     try:
 
         teams, prefs, n_rondes, n_velden, seed = read_inputs()
+        success = False
         for _ in range(10000):
             
             wedstrijden, rest_verplicht, rest_opt = genereer_schema(
@@ -751,6 +843,7 @@ def on_generate(*args):
             )
 
             if not any(rest_verplicht.values()):
+                success = True
                 break
             else:
                 seed = random.randint(1, 1000)
@@ -758,10 +851,24 @@ def on_generate(*args):
 
         LAST_RESULT = serialize_results(wedstrijden, rest_verplicht, rest_opt)
         render_results(LAST_RESULT)
-        set_status(f"Generated {len(wedstrijden)} matches successfully.", "success")
+        if success:
+            set_status(f"Succesvol {len(wedstrijden)} wedstrijden gegenereerd.", "success")
+        if not success:
+            set_status(f"Combinatie niet mogelijk.", "error")
     except Exception as exc:
         console.error(str(exc))
         set_status(f"Error: {exc}", "error")
+
+
+def init_fields() -> None:
+    teams_el = document.getElementById("teams-json")
+    prefs_el = document.getElementById("prefs-json")
+
+    if not teams_el.value.strip():
+        teams_el.value = "[]"
+
+    if not prefs_el.value.strip():
+        prefs_el.value = "[]"
 
 def on_calculate(*args):
     global LAST_RESULT
@@ -791,7 +898,7 @@ def on_calculate(*args):
         render_results(LAST_RESULT)
 
         if succes:
-            set_status(f"Generated {len(wedstrijden)} matches successfully.", "success")
+            set_status(f"Succesvol {len(wedstrijden)} wedstrijden gegenereerd.", "success")
         else:
             set_status(f"Combinatie niet mogelijk.", "error")
     except Exception as exc:
@@ -799,39 +906,27 @@ def on_calculate(*args):
         set_status(f"Error: {exc}", "error")
 
 
-def on_copy_json(*args):
-    if LAST_RESULT is None:
-        set_status("Generate a schedule first, then copy the JSON.", "error")
-        return
-
-    payload = json.dumps(LAST_RESULT, indent=2, ensure_ascii=False)
-    try:
-        promise = navigator.clipboard.writeText(payload)
-        set_status("Copied results JSON to clipboard.", "success")
-        return promise
-    except Exception:
-        set_status("Clipboard copy failed. Open DevTools and copy window.LAST_RESULT if needed.", "error")
-
-
 def wire_events() -> None:
     global EVENT_PROXIES
     EVENT_PROXIES = [
         create_proxy(on_generate),
-        create_proxy(on_copy_json),
         create_proxy(on_teams_csv_selected),
         create_proxy(on_add_preference),
         create_proxy(on_teams_json_changed),
         create_proxy(on_prefs_json_changed),
         create_proxy(on_calculate),
+        create_proxy(on_view_table),
+        create_proxy(on_view_visual),
     ]
 
     document.getElementById("generate-btn").addEventListener("click", EVENT_PROXIES[0])
-    document.getElementById("copy-json").addEventListener("click", EVENT_PROXIES[1])
-    document.getElementById("teams-csv-file").addEventListener("change", EVENT_PROXIES[2])
-    document.getElementById("add-pref-btn").addEventListener("click", EVENT_PROXIES[3])
-    document.getElementById("teams-json").addEventListener("change", EVENT_PROXIES[4])
-    document.getElementById("prefs-json").addEventListener("change", EVENT_PROXIES[5])
-    document.getElementById("min-fields-calc-button").addEventListener("click", EVENT_PROXIES[6])
+    document.getElementById("teams-csv-file").addEventListener("change", EVENT_PROXIES[1])
+    document.getElementById("add-pref-btn").addEventListener("click", EVENT_PROXIES[2])
+    document.getElementById("teams-json").addEventListener("change", EVENT_PROXIES[3])
+    document.getElementById("prefs-json").addEventListener("change", EVENT_PROXIES[4])
+    document.getElementById("min-fields-calc-button").addEventListener("click", EVENT_PROXIES[5])
+    document.getElementById("view-table-btn").addEventListener("click", EVENT_PROXIES[6])
+    document.getElementById("view-visual-btn").addEventListener("click", EVENT_PROXIES[7])
 
 wire_events()
-load_example_data()
+sync_preferences_ui()
