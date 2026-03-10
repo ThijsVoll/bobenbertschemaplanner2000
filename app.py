@@ -11,8 +11,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
-from js import console, document, navigator # type: ignore
-from pyodide.ffi import create_proxy # type: ignore
+from js import console, document, navigator  # type: ignore
+from pyodide.ffi import create_proxy  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,6 @@ class Match:
 
 VERPLICHTE_WEDSTRIJDEN = {1: 3, 2: 3, 3: 2}
 OPTIONELE_WEDSTRIJDEN = {1: 0, 2: 0, 3: 1}
-OUTPUT_VIEW = "table"
 
 EXAMPLE_TEAMS = [
     {"niveau": 1, "geslacht": "Heren", "naam": "Falcons", "leeftijd": "Jong"},
@@ -60,6 +59,7 @@ EXAMPLE_PREFS = [
 LAST_RESULT = None
 REMOVE_PREF_PROXIES = []
 EVENT_PROXIES = []
+OUTPUT_VIEW = "table"
 
 
 def _naam_index(teams: List[Team]) -> Dict[str, Team]:
@@ -109,12 +109,15 @@ def _pareer_gretig(
     pool = beschikbaar[:]
     pool.sort(key=lambda t: (t.niveau, t.geslacht != "Mixed", t.naam))
     gebruikt: Set[Team] = set()
+
     for i, t in enumerate(pool):
         if t in gebruikt:
             continue
+
         kandidaten = [
-            k for k in pool[i + 1 :] if k not in gebruikt and _geslacht_compatibel(t, k)
+            k for k in pool[i + 1:] if k not in gebruikt and _geslacht_compatibel(t, k)
         ]
+
         kandidaten.sort(
             key=lambda k: (
                 (frozenset((t.naam, k.naam)) in al_gespeeld),
@@ -122,12 +125,15 @@ def _pareer_gretig(
                 k.naam,
             )
         )
+
         if not kandidaten:
             continue
+
         k = kandidaten[0]
         paren.append((t, k))
         gebruikt.add(t)
         gebruikt.add(k)
+
     return paren
 
 
@@ -142,10 +148,13 @@ def genereer_schema(
         random.seed(seed)
 
     naam2team = _naam_index(teams)
+
     resterend_verplicht: Dict[Team, int] = {
         t: VERPLICHTE_WEDSTRIJDEN.get(t.niveau, 0) for t in teams
     }
-    resterend_opt: Dict[Team, int] = {t: OPTIONELE_WEDSTRIJDEN.get(t.niveau, 0) for t in teams}
+    resterend_opt: Dict[Team, int] = {
+        t: OPTIONELE_WEDSTRIJDEN.get(t.niveau, 0) for t in teams
+    }
     laatste_ronde: Dict[Team, Optional[int]] = {t: None for t in teams}
 
     voorkeur_set: Set[frozenset] = set()
@@ -156,6 +165,7 @@ def genereer_schema(
     ongeplande_voorkeuren = set(voorkeur_set)
     voorkeur_lijst = list(voorkeur_set)
     random.shuffle(voorkeur_lijst)
+
     voorkeur_doelronde: Dict[frozenset, int] = {}
     for i, pair in enumerate(voorkeur_lijst):
         voorkeur_doelronde[pair] = (i % n_rondes) + 1
@@ -230,24 +240,29 @@ def genereer_schema(
             laatste_ronde[a] = ronde
             laatste_ronde[b] = ronde
             al_gespeeld.add(frozenset((a.naam, b.naam)))
+
             for t in (a, b):
                 if resterend_verplicht[t] > 0:
                     resterend_verplicht[t] -= 1
                 elif resterend_opt[t] > 0:
                     resterend_opt[t] -= 1
+
             ongeplande_voorkeuren.discard(pair)
 
         for fase in ("verplicht", "opt"):
             if veld_teller > n_velden:
                 break
+
             alleen_verplicht = fase == "verplicht"
             beschikbaar = [
                 t for t in _beschikbare_teams(ronde, alleen_verplicht) if t not in geplande_deze_ronde
             ]
             paren = _pareer_gretig(beschikbaar, al_gespeeld, ronde)
+
             for a, b in paren:
                 if veld_teller > n_velden:
                     break
+
                 if alleen_verplicht:
                     if resterend_verplicht[a] == 0 or resterend_verplicht[b] == 0:
                         continue
@@ -263,6 +278,7 @@ def genereer_schema(
                 laatste_ronde[a] = ronde
                 laatste_ronde[b] = ronde
                 al_gespeeld.add(frozenset((a.naam, b.naam)))
+
                 for t in (a, b):
                     if resterend_verplicht[t] > 0:
                         resterend_verplicht[t] -= 1
@@ -275,9 +291,23 @@ def genereer_schema(
 
 
 def serialize_results(
-    wedstrijden: List[Match], rest_verplicht: Dict[str, int], rest_opt: Dict[str, int]
+    teams: List[Team],
+    wedstrijden: List[Match],
+    rest_verplicht: Dict[str, int],
+    rest_opt: Dict[str, int],
+    n_rondes: int,
 ) -> dict:
     return {
+        "n_rondes": n_rondes,
+        "teams": [
+            {
+                "naam": t.naam,
+                "geslacht": t.geslacht,
+                "leeftijd": t.leeftijd,
+                "niveau": t.niveau,
+            }
+            for t in teams
+        ],
         "matches": [
             {
                 "ronde": m.ronde,
@@ -302,86 +332,6 @@ def serialize_results(
     }
 
 
-def render_results(results: dict) -> None:
-    summary_el = document.getElementById("summary")
-    output_el = document.getElementById("schedule-output")
-    remaining_el = document.getElementById("remaining-output")
-
-    matches = results["matches"]
-    rounds = sorted({m["ronde"] for m in matches})
-
-    summary_el.innerHTML = f"""
-      <div class="summary-list">
-        <div class="summary-item"><span class="muted">Aantal wedstrijden</span><strong>{len(matches)}</strong></div>
-        <div class="summary-item"><span class="muted">Rondes</span><strong>{len(rounds)}</strong></div>
-        <div class="summary-item"><span class="muted">Ongebruikte slots</span><strong>{sum(results['remaining_required'].values())}</strong></div>
-      </div>
-    """
-
-    grouped = defaultdict(list)
-    for m in sorted(matches, key=lambda x: (x["ronde"], x["veld"])):
-        grouped[m["ronde"]].append(m)
-
-    schedule_parts = []
-    for ronde in sorted(grouped):
-        rows = []
-        for m in grouped[ronde]:
-            rows.append(
-                f"""
-                <tr>
-                  <td>{m['veld']:02d}</td>
-                  <td><strong>{html.escape(m['team_a']['naam'])}</strong><br><span class="muted small">{html.escape(m['team_a']['geslacht'])} · {html.escape(m['team_a']['leeftijd'])} · Niveau {m['team_a']['niveau']}</span></td>
-                  <td><strong>{html.escape(m['team_b']['naam'])}</strong><br><span class="muted small">{html.escape(m['team_b']['geslacht'])} · {html.escape(m['team_b']['leeftijd'])} · Niveau {m['team_b']['niveau']}</span></td>
-                </tr>
-                """
-            )
-        schedule_parts.append(
-            f"""
-            <section class="round-block">
-              <div class="round-header">Ronde {ronde}</div>
-              <table class="match-table">
-                <thead>
-                  <tr><th>Veld</th><th>Team A</th><th>Team B</th></tr>
-                </thead>
-                <tbody>
-                  {''.join(rows)}
-                </tbody>
-              </table>
-            </section>
-            """
-        )
-
-    output_el.innerHTML = ''.join(schedule_parts) if schedule_parts else '<p class="muted">No matches scheduled.</p>'
-
-    remaining_rows = []
-    for name in sorted(results["remaining_required"].keys()):
-        remaining_rows.append(
-            f"""
-            <tr>
-              <td>{html.escape(name)}</td>
-              <td>{results['remaining_required'][name]}</td>
-              <td>{results['remaining_optional'][name]}</td>
-            </tr>
-            """
-        )
-
-    remaining_el.innerHTML = f"""
-      <section class="panel" style="padding:0; margin-top: 16px;">
-        <div class="round-header">Remaining capacity</div>
-        <table class="remaining-table">
-          <thead>
-            <tr><th>Team</th><th>Required left</th><th>Optional left</th></tr>
-          </thead>
-          <tbody>
-            {''.join(remaining_rows)}
-          </tbody>
-        </table>
-      </section>
-    """
-
-    render_visual_schedule(results)
-    set_output_view(OUTPUT_VIEW)
-
 def set_status(message: str, kind: str = "info") -> None:
     el = document.getElementById("status")
     el.className = f"status status-{kind}"
@@ -397,9 +347,7 @@ def _pick_column(field_map: Dict[str, str], *aliases: str) -> str:
         key = _normalize_header(alias)
         if key in field_map:
             return field_map[key]
-    raise ValueError(
-        "Missing required CSV column. Expected one of: " + ", ".join(aliases)
-    )
+    raise ValueError("Missing required CSV column. Expected one of: " + ", ".join(aliases))
 
 
 def parse_teams_csv_text(csv_text: str) -> List[dict]:
@@ -407,14 +355,16 @@ def parse_teams_csv_text(csv_text: str) -> List[dict]:
         raise ValueError("The selected CSV file is empty.")
 
     sample = csv_text[:4096]
+
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;	")
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
     except csv.Error:
         class _Default(csv.excel):
             delimiter = ","
         dialect = _Default
 
     reader = csv.DictReader(io.StringIO(csv_text), dialect=dialect)
+
     if not reader.fieldnames:
         raise ValueError("Could not read CSV headers.")
 
@@ -509,89 +459,6 @@ def get_preferences() -> List[List[str]]:
     return prefs
 
 
-def set_output_view(view: str) -> None:
-    global OUTPUT_VIEW
-    OUTPUT_VIEW = view
-
-    table_btn = document.getElementById("view-table-btn")
-    visual_btn = document.getElementById("view-visual-btn")
-    table_el = document.getElementById("schedule-output")
-    visual_el = document.getElementById("visual-schedule-output")
-
-    if view == "visual":
-        table_el.classList.add("hidden")
-        visual_el.classList.remove("hidden")
-        table_btn.classList.remove("is-active")
-        visual_btn.classList.add("is-active")
-    else:
-        visual_el.classList.add("hidden")
-        table_el.classList.remove("hidden")
-        visual_btn.classList.remove("is-active")
-        table_btn.classList.add("is-active")
-
-
-def render_visual_schedule(results: dict) -> None:
-    visual_el = document.getElementById("visual-schedule-output")
-    matches = results["matches"]
-
-    grouped = defaultdict(list)
-    for m in sorted(matches, key=lambda x: (x["ronde"], x["veld"])):
-        grouped[m["ronde"]].append(m)
-
-    if not grouped:
-        visual_el.innerHTML = '<p class="muted">Geen wedstrijden gepland.</p>'
-        return
-
-    round_parts = []
-    for ronde in sorted(grouped):
-        cards = []
-        for m in grouped[ronde]:
-            cards.append(
-                f"""
-                <article class="visual-match-card">
-                  <div class="visual-field-badge">Veld {m['veld']:02d}</div>
-
-                  <div class="visual-team">
-                    {html.escape(m['team_a']['naam'])}
-                    <span class="visual-team-meta">
-                      {html.escape(m['team_a']['geslacht'])} · {html.escape(m['team_a']['leeftijd'])} · Niveau {m['team_a']['niveau']}
-                    </span>
-                  </div>
-
-                  <div class="visual-vs">vs</div>
-
-                  <div class="visual-team">
-                    {html.escape(m['team_b']['naam'])}
-                    <span class="visual-team-meta">
-                      {html.escape(m['team_b']['geslacht'])} · {html.escape(m['team_b']['leeftijd'])} · Niveau {m['team_b']['niveau']}
-                    </span>
-                  </div>
-                </article>
-                """
-            )
-
-        round_parts.append(
-            f"""
-            <section class="visual-round">
-              <div class="visual-round-header">Ronde {ronde}</div>
-              <div class="visual-round-body">
-                {''.join(cards)}
-              </div>
-            </section>
-            """
-        )
-
-    visual_el.innerHTML = f'<div class="visual-board">{"".join(round_parts)}</div>'
-
-
-def on_view_table(*args):
-    set_output_view("table")
-
-
-def on_view_visual(*args):
-    set_output_view("visual")
-
-    
 def set_preferences(prefs: List[List[str]]) -> None:
     document.getElementById("prefs-json").value = json.dumps(prefs, indent=2, ensure_ascii=False)
 
@@ -668,6 +535,7 @@ def render_preferences_editor() -> None:
 
     for idx, pair in enumerate(prefs):
         a_name, b_name = pair
+
         row = document.createElement("div")
         row.style.display = "flex"
         row.style.justifyContent = "space-between"
@@ -702,15 +570,14 @@ def render_preferences_editor() -> None:
         proxy = create_proxy(_make_remove_handler(idx))
         REMOVE_PREF_PROXIES.append(proxy)
         button.addEventListener("click", proxy)
-        row.appendChild(button)
 
+        row.appendChild(button)
         prefs_container.appendChild(row)
 
 
 def sync_preferences_ui() -> None:
     populate_preference_dropdowns()
     render_preferences_editor()
-
 
 
 async def import_csv_async() -> None:
@@ -738,10 +605,15 @@ async def import_csv_async() -> None:
 def on_teams_csv_selected(*args):
     asyncio.create_task(import_csv_async())
 
+
 def load_example_data(*args):
-    document.getElementById("teams-json").value = json.dumps(EXAMPLE_TEAMS, indent=2, ensure_ascii=False)
-    document.getElementById("prefs-json").value = json.dumps(EXAMPLE_PREFS, indent=2, ensure_ascii=False)
-    
+    document.getElementById("teams-json").value = json.dumps(
+        EXAMPLE_TEAMS, indent=2, ensure_ascii=False
+    )
+    document.getElementById("prefs-json").value = json.dumps(
+        EXAMPLE_PREFS, indent=2, ensure_ascii=False
+    )
+    sync_preferences_ui()
     set_status("Loaded example dataset.", "success")
 
 
@@ -758,6 +630,7 @@ def on_add_preference(*args):
         prefs = get_preferences()
         pair = [team_a, team_b]
         reverse_pair = [team_b, team_a]
+
         if pair in prefs or reverse_pair in prefs:
             raise ValueError("This preference already exists.")
 
@@ -781,14 +654,20 @@ def on_teams_json_changed(*args):
 def on_prefs_json_changed(*args):
     render_preferences_editor()
 
+
 def bereken_minimaal_aantal_velden(teams, voorkeuren, n_rondes, seed):
     for i in range(1, 15):
-        
-        schema, rest_verplicht, rest_optioneel = genereer_schema(teams, voorkeuren, n_rondes=n_rondes, n_velden=i, seed=7)
+        schema, rest_verplicht, rest_optioneel = genereer_schema(
+            teams,
+            voorkeuren,
+            n_rondes=n_rondes,
+            n_velden=i,
+            seed=seed,
+        )
         if not any(rest_verplicht.values()):
             return schema, rest_verplicht, rest_optioneel, i
-    
-    return [], {}, (), -1
+
+    return [], {}, {}, -1
 
 
 def read_inputs() -> tuple[list[Team], list[tuple[str, str]], int, int, Optional[int]]:
@@ -826,14 +705,264 @@ def read_inputs() -> tuple[list[Team], list[tuple[str, str]], int, int, Optional
 
     return teams, prefs, n_rondes, n_velden, seed
 
+
+def set_output_view(view: str) -> None:
+    global OUTPUT_VIEW
+    OUTPUT_VIEW = view
+
+    table_btn = document.getElementById("view-table-btn")
+    timeline_btn = document.getElementById("view-timeline-btn")
+    table_el = document.getElementById("schedule-output")
+    timeline_el = document.getElementById("timeline-output")
+
+    if view == "timeline":
+        table_el.classList.add("hidden")
+        timeline_el.classList.remove("hidden")
+        table_btn.classList.remove("is-active")
+        timeline_btn.classList.add("is-active")
+    else:
+        timeline_el.classList.add("hidden")
+        table_el.classList.remove("hidden")
+        timeline_btn.classList.remove("is-active")
+        table_btn.classList.add("is-active")
+
+
+def render_table_schedule(results: dict) -> None:
+    output_el = document.getElementById("schedule-output")
+    matches = results["matches"]
+
+    grouped = defaultdict(list)
+    for m in sorted(matches, key=lambda x: (x["ronde"], x["veld"])):
+        grouped[m["ronde"]].append(m)
+
+    schedule_parts = []
+
+    for ronde in sorted(grouped):
+        rows = []
+        for m in grouped[ronde]:
+            rows.append(
+                f"""
+                <tr>
+                  <td>{m['veld']:02d}</td>
+                  <td>
+                    <strong>{html.escape(m['team_a']['naam'])}</strong><br>
+                    <span class="muted small">
+                      {html.escape(m['team_a']['geslacht'])} · {html.escape(m['team_a']['leeftijd'])} · Niveau {m['team_a']['niveau']}
+                    </span>
+                  </td>
+                  <td>
+                    <strong>{html.escape(m['team_b']['naam'])}</strong><br>
+                    <span class="muted small">
+                      {html.escape(m['team_b']['geslacht'])} · {html.escape(m['team_b']['leeftijd'])} · Niveau {m['team_b']['niveau']}
+                    </span>
+                  </td>
+                </tr>
+                """
+            )
+
+        schedule_parts.append(
+            f"""
+            <section class="round-block">
+              <div class="round-header">Ronde {ronde}</div>
+              <table class="match-table">
+                <thead>
+                  <tr><th>Veld</th><th>Team A</th><th>Team B</th></tr>
+                </thead>
+                <tbody>
+                  {''.join(rows)}
+                </tbody>
+              </table>
+            </section>
+            """
+        )
+
+    output_el.innerHTML = (
+        "".join(schedule_parts)
+        if schedule_parts
+        else '<p class="muted">Geen wedstrijden gepland.</p>'
+    )
+
+
+def render_team_timeline(results: dict) -> None:
+    timeline_el = document.getElementById("timeline-output")
+    teams = results.get("teams", [])
+    matches = results.get("matches", [])
+    n_rondes = int(results.get("n_rondes", 0) or 0)
+
+    timeline_lookup: Dict[str, Dict[int, dict]] = defaultdict(dict)
+
+    for m in matches:
+        ronde = int(m["ronde"])
+        veld = int(m["veld"])
+
+        a = m["team_a"]
+        b = m["team_b"]
+
+        timeline_lookup[a["naam"]][ronde] = {
+            "opponent": b["naam"],
+            "veld": veld,
+            "opponent_geslacht": b["geslacht"],
+            "opponent_leeftijd": b["leeftijd"],
+            "opponent_niveau": b["niveau"],
+            "own_niveau": a["niveau"],
+        }
+
+        timeline_lookup[b["naam"]][ronde] = {
+            "opponent": a["naam"],
+            "veld": veld,
+            "opponent_geslacht": a["geslacht"],
+            "opponent_leeftijd": a["leeftijd"],
+            "opponent_niveau": a["niveau"],
+            "own_niveau": b["niveau"],
+        }
+
+    if not teams:
+        timeline_el.innerHTML = '<p class="muted">Geen teamdata beschikbaar.</p>'
+        return
+
+    header_cells = ['<th class="timeline-team-col">Team</th>']
+    for ronde in range(1, n_rondes + 1):
+        header_cells.append(f'<th class="timeline-round-col">Ronde {ronde}</th>')
+
+    body_rows = []
+    sorted_teams = sorted(
+        teams,
+        key=lambda t: (int(t.get("niveau", 0)), str(t.get("geslacht", "")), str(t.get("naam", ""))),
+    )
+
+    for team in sorted_teams:
+        team_name = str(team["naam"])
+        team_niveau = int(team["niveau"])
+        team_geslacht = str(team["geslacht"])
+        team_leeftijd = str(team["leeftijd"])
+
+        cells = []
+        for ronde in range(1, n_rondes + 1):
+            slot = timeline_lookup.get(team_name, {}).get(ronde)
+            if slot:
+                level_class = f"level-{team_niveau}"
+                cells.append(
+                    f"""
+                    <td class="timeline-slot">
+                      <div class="timeline-match {level_class}">
+                        <div class="timeline-opponent">{html.escape(slot['opponent'])}</div>
+                        <span class="timeline-subline">Veld {slot['veld']:02d}</span>
+                        <span class="timeline-subline">
+                          {html.escape(slot['opponent_geslacht'])} · {html.escape(slot['opponent_leeftijd'])} · Niveau {slot['opponent_niveau']}
+                        </span>
+                      </div>
+                    </td>
+                    """
+                )
+            else:
+                cells.append(
+                    """
+                    <td class="timeline-slot">
+                      <span class="timeline-empty">—</span>
+                    </td>
+                    """
+                )
+
+        body_rows.append(
+            f"""
+            <tr>
+              <td class="timeline-team-cell">
+                <div class="timeline-team-name">{html.escape(team_name)}</div>
+                <span class="timeline-team-meta">
+                  {html.escape(team_geslacht)} · {html.escape(team_leeftijd)} · Niveau {team_niveau}
+                </span>
+              </td>
+              {''.join(cells)}
+            </tr>
+            """
+        )
+
+    timeline_el.innerHTML = f"""
+    <section class="timeline-shell">
+      <div class="round-header">Team timeline</div>
+      <div class="timeline-scroll">
+        <table class="timeline-table">
+          <thead>
+            <tr>
+              {''.join(header_cells)}
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(body_rows)}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    """
+
+
+def render_results(results: dict) -> None:
+    summary_el = document.getElementById("summary")
+    remaining_el = document.getElementById("remaining-output")
+
+    matches = results["matches"]
+    rounds = sorted({m["ronde"] for m in matches})
+
+    summary_el.innerHTML = f"""
+    <div class="summary-list">
+      <div class="summary-item">
+        <span class="muted">Aantal wedstrijden</span>
+        <strong>{len(matches)}</strong>
+      </div>
+      <div class="summary-item">
+        <span class="muted">Rondes gebruikt</span>
+        <strong>{len(rounds)}</strong>
+      </div>
+      <div class="summary-item">
+        <span class="muted">Ongebruikte slots</span>
+        <strong>{sum(results['remaining_required'].values())}</strong>
+      </div>
+    </div>
+    """
+
+    render_table_schedule(results)
+    render_team_timeline(results)
+
+    remaining_rows = []
+    for name in sorted(results["remaining_required"].keys()):
+        remaining_rows.append(
+            f"""
+            <tr>
+              <td>{html.escape(name)}</td>
+              <td>{results['remaining_required'][name]}</td>
+              <td>{results['remaining_optional'][name]}</td>
+            </tr>
+            """
+        )
+
+    remaining_el.innerHTML = f"""
+    <section class="panel" style="padding:0; margin-top: 16px;">
+      <div class="round-header">Remaining capacity</div>
+      <table class="remaining-table">
+        <thead>
+          <tr><th>Team</th><th>Required left</th><th>Optional left</th></tr>
+        </thead>
+        <tbody>
+          {''.join(remaining_rows)}
+        </tbody>
+      </table>
+    </section>
+    """
+
+    set_output_view(OUTPUT_VIEW)
+
+
 def on_generate(*args):
     global LAST_RESULT
     try:
-
         teams, prefs, n_rondes, n_velden, seed = read_inputs()
+
         success = False
+        wedstrijden = []
+        rest_verplicht = {}
+        rest_opt = {}
+
         for _ in range(10000):
-            
             wedstrijden, rest_verplicht, rest_opt = genereer_schema(
                 teams=teams,
                 voorkeuren=prefs,
@@ -841,20 +970,56 @@ def on_generate(*args):
                 n_velden=n_velden,
                 seed=seed,
             )
-
             if not any(rest_verplicht.values()):
                 success = True
                 break
-            else:
-                seed = random.randint(1, 1000)
-                document.getElementById("seed").value = seed
+            seed = random.randint(1, 1000)
+            document.getElementById("seed").value = str(seed)
 
-        LAST_RESULT = serialize_results(wedstrijden, rest_verplicht, rest_opt)
+        LAST_RESULT = serialize_results(teams, wedstrijden, rest_verplicht, rest_opt, n_rondes)
         render_results(LAST_RESULT)
+
         if success:
             set_status(f"Succesvol {len(wedstrijden)} wedstrijden gegenereerd.", "success")
-        if not success:
-            set_status(f"Combinatie niet mogelijk.", "error")
+        else:
+            set_status("Combinatie niet mogelijk.", "error")
+    except Exception as exc:
+        console.error(str(exc))
+        set_status(f"Error: {exc}", "error")
+
+
+def on_calculate(*args):
+    global LAST_RESULT
+    try:
+        teams, prefs, n_rondes, n_velden, seed = read_inputs()
+
+        succes = False
+        wedstrijden = []
+        rest_verplicht = {}
+        rest_opt = {}
+        result_n_velden = n_velden
+
+        for _ in range(10000):
+            wedstrijden, rest_verplicht, rest_opt, result_n_velden = bereken_minimaal_aantal_velden(
+                teams=teams,
+                voorkeuren=prefs,
+                n_rondes=n_rondes,
+                seed=seed,
+            )
+            if not any(rest_verplicht.values()):
+                succes = True
+                document.getElementById("n-velden").value = str(result_n_velden)
+                break
+            seed = random.randint(1, 1000)
+            document.getElementById("seed").value = str(seed)
+
+        LAST_RESULT = serialize_results(teams, wedstrijden, rest_verplicht, rest_opt, n_rondes)
+        render_results(LAST_RESULT)
+
+        if succes:
+            set_status(f"Succesvol {len(wedstrijden)} wedstrijden gegenereerd.", "success")
+        else:
+            set_status("Combinatie niet mogelijk.", "error")
     except Exception as exc:
         console.error(str(exc))
         set_status(f"Error: {exc}", "error")
@@ -870,44 +1035,18 @@ def init_fields() -> None:
     if not prefs_el.value.strip():
         prefs_el.value = "[]"
 
-def on_calculate(*args):
-    global LAST_RESULT
-    try:
 
-        teams, prefs, n_rondes, n_velden, seed = read_inputs()
-        succes = False
-        for _ in range(10000):
+def on_view_table(*args):
+    set_output_view("table")
 
-            
-            wedstrijden, rest_verplicht, rest_opt, n_velden = bereken_minimaal_aantal_velden(
-                teams=teams,
-                voorkeuren=prefs,
-                n_rondes=n_rondes,
-                seed=seed,
-            )
 
-            if not any(rest_verplicht.values()):
-                succes = True
-                document.getElementById("n-velden").value = n_velden
-                break
-            else:
-                seed = random.randint(1, 1000)
-                document.getElementById("seed").value = seed
-
-        LAST_RESULT = serialize_results(wedstrijden, rest_verplicht, rest_opt)
-        render_results(LAST_RESULT)
-
-        if succes:
-            set_status(f"Succesvol {len(wedstrijden)} wedstrijden gegenereerd.", "success")
-        else:
-            set_status(f"Combinatie niet mogelijk.", "error")
-    except Exception as exc:
-        console.error(str(exc))
-        set_status(f"Error: {exc}", "error")
+def on_view_timeline(*args):
+    set_output_view("timeline")
 
 
 def wire_events() -> None:
     global EVENT_PROXIES
+
     EVENT_PROXIES = [
         create_proxy(on_generate),
         create_proxy(on_teams_csv_selected),
@@ -916,7 +1055,7 @@ def wire_events() -> None:
         create_proxy(on_prefs_json_changed),
         create_proxy(on_calculate),
         create_proxy(on_view_table),
-        create_proxy(on_view_visual),
+        create_proxy(on_view_timeline),
     ]
 
     document.getElementById("generate-btn").addEventListener("click", EVENT_PROXIES[0])
@@ -926,7 +1065,10 @@ def wire_events() -> None:
     document.getElementById("prefs-json").addEventListener("change", EVENT_PROXIES[4])
     document.getElementById("min-fields-calc-button").addEventListener("click", EVENT_PROXIES[5])
     document.getElementById("view-table-btn").addEventListener("click", EVENT_PROXIES[6])
-    document.getElementById("view-visual-btn").addEventListener("click", EVENT_PROXIES[7])
+    document.getElementById("view-timeline-btn").addEventListener("click", EVENT_PROXIES[7])
 
+
+init_fields()
 wire_events()
 sync_preferences_ui()
+set_output_view("table")

@@ -1,12 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="nl">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tournament Scheduler</title>
-    <meta name="description" content="Static GitHub Pages tournament scheduler built with PyScript." />
-    <link rel="stylesheet" href="https://pyscript.net/releases/2026.3.1/core.css" />
-    <script type="module" src="https://pyscript.net/releases/2026.3.1/core.js"></script>
+    <meta
+      name="description"
+      content="Static GitHub Pages tournament scheduler built with PyScript."
+    />
+    <link
+      rel="stylesheet"
+      href="https://pyscript.net/releases/2026.3.1/core.css"
+    />
+    <script
+      type="module"
+      src="https://pyscript.net/releases/2026.3.1/core.js"
+    ></script>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
@@ -14,11 +23,12 @@
       <header class="hero">
         <div>
           <p class="eyebrow">Thijs Vollebregt 2026</p>
-          <h1>Bob & Bert schema planner 2000</h1>
+          <h1>Bob &amp; Bert schema planner 2000</h1>
           <p class="lead">
             Das lekker. Hoeven Chris en Nanette het niet meer te doen
           </p>
         </div>
+
         <div class="header-actions">
           <button id="generate-btn">Schema genereren</button>
           <button id="min-fields-calc-button">Velden berekenen</button>
@@ -34,10 +44,12 @@
               <span>Rondes</span>
               <input id="n-rondes" type="number" min="1" value="7" />
             </label>
+
             <label>
               <span>Aantal velden</span>
               <input id="n-velden" type="number" min="1" value="12" />
             </label>
+
             <label>
               <span>Seed</span>
               <input id="seed" type="number" value="42" />
@@ -45,12 +57,20 @@
           </div>
 
           <label class="field-block">
-            <span>teams CSV importeren</span>
-            <div class="field-row" style="align-items: end; gap: 12px; flex-wrap: wrap;">
-              <input id="teams-csv-file" type="file" accept=".csv,text/csv" />
-              <!-- <button id="import-csv-btn" type="button" class="secondary">Import CSV</button> -->
+            <span>Teams CSV importeren</span>
+            <div
+              class="field-row"
+              style="align-items: end; gap: 12px; flex-wrap: wrap;"
+            >
+              <input
+                id="teams-csv-file"
+                type="file"
+                accept=".csv,text/csv"
+              />
             </div>
-            <small class="muted">Verwachtte kolommen: naam, niveau, geslacht, leeftijd.</small>
+            <small class="muted">
+              Verwachtte kolommen: naam, niveau, geslacht, leeftijd.
+            </small>
           </label>
 
           <label class="field-block">
@@ -59,6 +79,7 @@
 
           <section class="field-block">
             <span>Voorkeur wedstrijden</span>
+
             <div class="pref-row">
               <label class="pref-select-wrap">
                 <span>Team A</span>
@@ -70,17 +91,25 @@
                 <select id="pref-team-b"></select>
               </label>
 
-              <button id="add-pref-btn" type="button" class="secondary pref-add-btn">
+              <button
+                id="add-pref-btn"
+                type="button"
+                class="secondary pref-add-btn"
+              >
                 Voorkeur toevoegen
               </button>
             </div>
-            <div id="prefs-editor-empty" class="muted small" style="margin-top: 8px;">
+
+            <div
+              id="prefs-editor-empty"
+              class="muted small"
+              style="margin-top: 8px;"
+            >
               Eerst teams importeren.
             </div>
+
             <div id="prefs-list" style="display: grid; gap: 8px; margin-top: 12px;"></div>
           </section>
-
-          
 
           <label class="field-block">
             <textarea id="prefs-json" spellcheck="false" hidden></textarea>
@@ -98,17 +127,17 @@
 
           <div class="view-toggle" role="tablist" aria-label="Outputweergave">
             <button id="view-table-btn" type="button" class="secondary is-active">
-              Tabelweergave
+              Wedstrijden
             </button>
-            <button id="view-visual-btn" type="button" class="secondary">
-              Visuele planning
+            <button id="view-timeline-btn" type="button" class="secondary">
+              Team timeline
             </button>
           </div>
 
           <div id="summary" class="summary-card"></div>
 
           <div id="schedule-output"></div>
-          <div id="visual-schedule-output" class="hidden"></div>
+          <div id="timeline-output" class="hidden"></div>
 
           <div id="remaining-output"></div>
         </section>
