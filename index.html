@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tournament Scheduler</title>
+    <meta name="description" content="Static GitHub Pages tournament scheduler built with PyScript." />
+
+    <link rel="stylesheet" href="https://pyscript.net/releases/2026.3.1/core.css" />
+    <script type="module" src="https://pyscript.net/releases/2026.3.1/core.js"></script>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">GitHub Pages-ready</p>
+          <h1>Tournament Scheduler</h1>
+          <p class="lead">
+            Paste teams + preferences as JSON, generate a schedule in your browser,
+            and publish the app as a static site.
+          </p>
+        </div>
+        <div class="header-actions">
+          <button id="load-example" class="secondary">Load example</button>
+          <button id="generate-btn">Generate schedule</button>
+        </div>
+      </header>
+
+      <section class="grid">
+        <section class="panel">
+          <h2>Inputs</h2>
+          <div class="field-row params">
+            <label>
+              <span>Rounds</span>
+              <input id="n-rondes" type="number" min="1" value="7" />
+            </label>
+            <label>
+              <span>Fields</span>
+              <input id="n-velden" type="number" min="1" value="12" />
+            </label>
+            <label>
+              <span>Seed</span>
+              <input id="seed" type="number" value="42" />
+            </label>
+          </div>
+
+          <label class="field-block">
+            <span>Teams (JSON)</span>
+            <textarea id="teams-json" spellcheck="false"></textarea>
+          </label>
+
+          <label class="field-block">
+            <span>Preferences (JSON array of pairs)</span>
+            <textarea id="prefs-json" spellcheck="false"></textarea>
+          </label>
+
+          <details class="notes" open>
+            <summary>Expected team JSON shape</summary>
+            <pre><code>[
+  {
+    "niveau": 1,
+    "geslacht": "Heren",
+    "naam": "Team A",
+    "leeftijd": "Jong"
+  }
+]</code></pre>
+          </details>
+        </section>
+
+        <section class="panel">
+          <h2>Output</h2>
+          <div id="status" class="status status-info">Ready.</div>
+
+          <div class="actions-row">
+            <button id="copy-json" class="secondary">Copy results as JSON</button>
+          </div>
+
+          <div id="summary" class="summary-card"></div>
+          <div id="schedule-output"></div>
+          <div id="remaining-output"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="py" src="./app.py"></script>
+  </body>
+</html>
