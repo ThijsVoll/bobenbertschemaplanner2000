@@ -11,9 +11,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
-from js import console, document, navigator  # type: ignore
-from pyodide.ffi import create_proxy  # type: ignore
-
+from js import console, document, navigator, XLSX  # type: ignore
+from pyodide.ffi import create_proxy, to_js # type: ignore
 
 @dataclass(frozen=True)
 class Team:
@@ -951,6 +950,164 @@ def render_results(results: dict) -> None:
 
     set_output_view(OUTPUT_VIEW)
 
+def _build_excel_overview_rows(results: dict) -> list[list]:
+    matches = results.get("matches", [])
+    teams = results.get("teams", [])
+    rounds_used = sorted({int(m["ronde"]) for m in matches})
+
+    return [
+        ["Metric", "Value"],
+        ["Aantal teams", len(teams)],
+        ["Aantal wedstrijden", len(matches)],
+        ["Rondes gebruikt", len(rounds_used)],
+        ["Geconfigureerde rondes", int(results.get("n_rondes", 0) or 0)],
+        ["Open verplichte slots", sum(results.get("remaining_required", {}).values())],
+    ]
+
+
+def _build_excel_matches_rows(results: dict) -> list[list]:
+    rows = [
+        [
+            "Ronde",
+            "Veld",
+            "Team A",
+            "Team A Geslacht",
+            "Team A Leeftijd",
+            "Team A Niveau",
+            "Team B",
+            "Team B Geslacht",
+            "Team B Leeftijd",
+            "Team B Niveau",
+        ]
+    ]
+
+    for m in sorted(results.get("matches", []), key=lambda x: (x["ronde"], x["veld"])):
+        rows.append(
+            [
+                int(m["ronde"]),
+                int(m["veld"]),
+                str(m["team_a"]["naam"]),
+                str(m["team_a"]["geslacht"]),
+                str(m["team_a"]["leeftijd"]),
+                int(m["team_a"]["niveau"]),
+                str(m["team_b"]["naam"]),
+                str(m["team_b"]["geslacht"]),
+                str(m["team_b"]["leeftijd"]),
+                int(m["team_b"]["niveau"]),
+            ]
+        )
+
+    return rows
+
+
+def _build_excel_timeline_rows(results: dict) -> list[list]:
+    teams = results.get("teams", [])
+    matches = results.get("matches", [])
+    n_rondes = int(results.get("n_rondes", 0) or 0)
+
+    timeline_lookup: Dict[str, Dict[int, str]] = defaultdict(dict)
+
+    for m in matches:
+        ronde = int(m["ronde"])
+        veld = int(m["veld"])
+
+        a = m["team_a"]
+        b = m["team_b"]
+
+        timeline_lookup[str(a["naam"])][ronde] = f"{b['naam']} (Veld {veld:02d})"
+        timeline_lookup[str(b["naam"])][ronde] = f"{a['naam']} (Veld {veld:02d})"
+
+    header = ["Team", "Geslacht", "Leeftijd", "Niveau"]
+    header.extend([f"Ronde {ronde}" for ronde in range(1, n_rondes + 1)])
+
+    rows = [header]
+
+    sorted_teams = sorted(
+        teams,
+        key=lambda t: (
+            int(t.get("niveau", 0)),
+            str(t.get("geslacht", "")),
+            str(t.get("naam", "")),
+        ),
+    )
+
+    for team in sorted_teams:
+        team_name = str(team["naam"])
+        row = [
+            team_name,
+            str(team["geslacht"]),
+            str(team["leeftijd"]),
+            int(team["niveau"]),
+        ]
+
+        for ronde in range(1, n_rondes + 1):
+            row.append(timeline_lookup.get(team_name, {}).get(ronde, ""))
+
+        rows.append(row)
+
+    return rows
+
+
+def _build_excel_remaining_rows(results: dict) -> list[list]:
+    rows = [["Team", "Required left", "Optional left"]]
+
+    required = results.get("remaining_required", {})
+    optional = results.get("remaining_optional", {})
+
+    for name in sorted(required.keys()):
+        rows.append(
+            [
+                str(name),
+                int(required.get(name, 0)),
+                int(optional.get(name, 0)),
+            ]
+        )
+
+    return rows
+
+
+def _build_excel_preferences_rows() -> list[list]:
+    rows = [["Team A", "Team B"]]
+
+    try:
+        prefs = get_preferences()
+    except Exception:
+        prefs = []
+
+    for pair in prefs:
+        if len(pair) == 2:
+            rows.append([str(pair[0]), str(pair[1])])
+
+    return rows
+
+
+def on_export_excel(*args):
+    if LAST_RESULT is None:
+        set_status("Genereer eerst een schema voordat je exporteert.", "error")
+        return
+
+    try:
+        wb = XLSX.utils.book_new()
+        overview_ws = XLSX.utils.aoa_to_sheet(to_js(_build_excel_overview_rows(LAST_RESULT)))
+        matches_ws = XLSX.utils.aoa_to_sheet(to_js(_build_excel_matches_rows(LAST_RESULT)))
+        timeline_ws = XLSX.utils.aoa_to_sheet(to_js(_build_excel_timeline_rows(LAST_RESULT)))
+        remaining_ws = XLSX.utils.aoa_to_sheet(to_js(_build_excel_remaining_rows(LAST_RESULT)))
+        prefs_ws = XLSX.utils.aoa_to_sheet(to_js(_build_excel_preferences_rows()))
+
+        XLSX.utils.book_append_sheet(wb, overview_ws, "Overzicht")
+        XLSX.utils.book_append_sheet(wb, matches_ws, "Wedstrijden")
+        XLSX.utils.book_append_sheet(wb, timeline_ws, "TeamTimeline")
+        XLSX.utils.book_append_sheet(wb, remaining_ws, "Capaciteit")
+        XLSX.utils.book_append_sheet(wb, prefs_ws, "Voorkeuren")
+
+        XLSX.writeFile(wb, "tournament_schedule.xlsx")
+
+        set_status("Excel-bestand succesvol gedownload.", "success")
+
+    except Exception as exc:
+        console.error(str(exc))
+        set_status(f"Excel export error: {exc}", "error")
+
 
 def on_generate(*args):
     global LAST_RESULT
@@ -962,7 +1119,7 @@ def on_generate(*args):
         rest_verplicht = {}
         rest_opt = {}
 
-        for _ in range(10000):
+        for _ in range(1000):
             wedstrijden, rest_verplicht, rest_opt = genereer_schema(
                 teams=teams,
                 voorkeuren=prefs,
@@ -999,7 +1156,7 @@ def on_calculate(*args):
         rest_opt = {}
         result_n_velden = n_velden
 
-        for _ in range(10000):
+        for _ in range(1000):
             wedstrijden, rest_verplicht, rest_opt, result_n_velden = bereken_minimaal_aantal_velden(
                 teams=teams,
                 voorkeuren=prefs,
@@ -1056,6 +1213,7 @@ def wire_events() -> None:
         create_proxy(on_calculate),
         create_proxy(on_view_table),
         create_proxy(on_view_timeline),
+        create_proxy(on_export_excel),
     ]
 
     document.getElementById("generate-btn").addEventListener("click", EVENT_PROXIES[0])
@@ -1066,6 +1224,8 @@ def wire_events() -> None:
     document.getElementById("min-fields-calc-button").addEventListener("click", EVENT_PROXIES[5])
     document.getElementById("view-table-btn").addEventListener("click", EVENT_PROXIES[6])
     document.getElementById("view-timeline-btn").addEventListener("click", EVENT_PROXIES[7])
+    document.getElementById("export-excel").addEventListener("click", EVENT_PROXIES[8])
+
 
 
 init_fields()
