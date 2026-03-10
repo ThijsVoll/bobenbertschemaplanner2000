@@ -690,6 +690,15 @@ def on_teams_json_changed(*args):
 def on_prefs_json_changed(*args):
     render_preferences_editor()
 
+def bereken_minimaal_aantal_velden(teams, voorkeuren, n_rondes, seed):
+    for i in range(1, 15):
+        
+        schema, rest_verplicht, rest_optioneel = genereer_schema(teams, voorkeuren, n_rondes=n_rondes, n_velden=i, seed=7)
+        if not any(rest_verplicht.values()):
+            return schema, rest_verplicht, rest_optioneel, i
+    
+    return [], {}, (), -1
+
 
 def read_inputs() -> tuple[list[Team], list[tuple[str, str]], int, int, Optional[int]]:
     teams_raw = json.loads(document.getElementById("teams-json").value)
@@ -726,7 +735,7 @@ def on_generate(*args):
     try:
 
         teams, prefs, n_rondes, n_velden, seed = read_inputs()
-        for _ in range(1000):
+        for _ in range(10000):
             
             wedstrijden, rest_verplicht, rest_opt = genereer_schema(
                 teams=teams,
@@ -745,6 +754,41 @@ def on_generate(*args):
         LAST_RESULT = serialize_results(wedstrijden, rest_verplicht, rest_opt)
         render_results(LAST_RESULT)
         set_status(f"Generated {len(wedstrijden)} matches successfully.", "success")
+    except Exception as exc:
+        console.error(str(exc))
+        set_status(f"Error: {exc}", "error")
+
+def on_calculate(*args):
+    global LAST_RESULT
+    try:
+
+        teams, prefs, n_rondes, n_velden, seed = read_inputs()
+        succces = False
+        for _ in range(10000):
+
+            
+            wedstrijden, rest_verplicht, rest_opt, n_velden = bereken_minimaal_aantal_velden(
+                teams=teams,
+                voorkeuren=prefs,
+                n_rondes=n_rondes,
+                seed=seed,
+            )
+
+            if not any(rest_verplicht.values()):
+                succes = True
+                document.getElementById("n-velden").value = n_velden
+                break
+            else:
+                seed = random.randint(1, 1000)
+                document.getElementById("seed").value = seed
+
+        LAST_RESULT = serialize_results(wedstrijden, rest_verplicht, rest_opt)
+        render_results(LAST_RESULT)
+
+        if succces:
+            set_status(f"Generated {len(wedstrijden)} matches successfully.", "success")
+        else:
+            set_status(f"Combinatie niet mogelijk.", "success")
     except Exception as exc:
         console.error(str(exc))
         set_status(f"Error: {exc}", "error")
@@ -773,6 +817,7 @@ def wire_events() -> None:
         create_proxy(on_add_preference),
         create_proxy(on_teams_json_changed),
         create_proxy(on_prefs_json_changed),
+        create_proxy(on_calculate),
     ]
 
     document.getElementById("generate-btn").addEventListener("click", EVENT_PROXIES[0])
@@ -781,6 +826,6 @@ def wire_events() -> None:
     document.getElementById("add-pref-btn").addEventListener("click", EVENT_PROXIES[3])
     document.getElementById("teams-json").addEventListener("change", EVENT_PROXIES[4])
     document.getElementById("prefs-json").addEventListener("change", EVENT_PROXIES[5])
-
+    document.getElementById("min-fields-calc-button").addEventListener("click", EVENT_PROXIES[6])
 
 wire_events()
