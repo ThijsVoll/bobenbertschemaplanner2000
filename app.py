@@ -11,8 +11,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
-from js import console, document, navigator
-from pyodide.ffi import create_proxy
+from js import console, document, navigator # type: ignore
+from pyodide.ffi import create_proxy # type: ignore
 
 
 @dataclass(frozen=True)
@@ -653,6 +653,12 @@ async def import_csv_async() -> None:
 def on_import_csv(*args):
     asyncio.create_task(import_csv_async())
 
+def load_example_data(*args):
+    document.getElementById("teams-json").value = json.dumps(EXAMPLE_TEAMS, indent=2, ensure_ascii=False)
+    document.getElementById("prefs-json").value = json.dumps(EXAMPLE_PREFS, indent=2, ensure_ascii=False)
+    sync_preferences_ui()
+    set_status("Loaded example dataset.", "success")
+
 
 def on_add_preference(*args):
     try:
@@ -829,3 +835,4 @@ def wire_events() -> None:
     document.getElementById("min-fields-calc-button").addEventListener("click", EVENT_PROXIES[6])
 
 wire_events()
+load_example_data()
