@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tournament Scheduler</title>
     <meta name="description" content="Static GitHub Pages tournament scheduler built with PyScript." />
-
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.3.1/core.css" />
     <script type="module" src="https://pyscript.net/releases/2026.3.1/core.js"></script>
     <link rel="stylesheet" href="./style.css" />
@@ -17,26 +16,26 @@
           <p class="eyebrow">GitHub Pages-ready</p>
           <h1>Bob & Bert schema planner 2000</h1>
           <p class="lead">
-            Paste teams + preferences as JSON, generate a schedule in your browser,
-            and publish the app as a static site.
+            Das lekker. Hoeven Chris en Nanette het niet meer te doen
           </p>
         </div>
         <div class="header-actions">
           <button id="load-example" class="secondary">Load example</button>
-          <button id="generate-btn">Generate schedule</button>
+          <button id="generate-btn">Schema genereren</button>
         </div>
       </header>
 
       <section class="grid">
         <section class="panel">
           <h2>Inputs</h2>
+
           <div class="field-row params">
             <label>
-              <span>Rounds</span>
+              <span>Rondes</span>
               <input id="n-rondes" type="number" min="1" value="7" />
             </label>
             <label>
-              <span>Fields</span>
+              <span>Aantal velden</span>
               <input id="n-velden" type="number" min="1" value="12" />
             </label>
             <label>
@@ -46,9 +45,37 @@
           </div>
 
           <label class="field-block">
+            <span>Import teams from CSV</span>
+            <div class="field-row" style="align-items: end; gap: 12px; flex-wrap: wrap;">
+              <input id="teams-csv-file" type="file" accept=".csv,text/csv" />
+              <button id="import-csv-btn" type="button" class="secondary">Import CSV</button>
+            </div>
+            <small class="muted">Expected columns: naam, niveau, geslacht, leeftijd (case-insensitive; comma/semicolon/tab-separated all supported).</small>
+          </label>
+
+          <label class="field-block">
             <span>Teams (JSON)</span>
             <textarea id="teams-json" spellcheck="false"></textarea>
           </label>
+
+          <section class="field-block">
+            <span>Preferences builder</span>
+            <div class="field-row" style="align-items: end; gap: 12px; flex-wrap: wrap;">
+              <label style="min-width: 220px; flex: 1;">
+                <span>Team A</span>
+                <select id="pref-team-a"></select>
+              </label>
+              <label style="min-width: 220px; flex: 1;">
+                <span>Team B</span>
+                <select id="pref-team-b"></select>
+              </label>
+              <button id="add-pref-btn" type="button" class="secondary">Add preference</button>
+            </div>
+            <div id="prefs-editor-empty" class="muted small" style="margin-top: 8px;">
+              Import teams first to populate the dropdowns.
+            </div>
+            <div id="prefs-list" style="display: grid; gap: 8px; margin-top: 12px;"></div>
+          </section>
 
           <label class="field-block">
             <span>Preferences (JSON array of pairs)</span>
@@ -71,11 +98,9 @@
         <section class="panel">
           <h2>Output</h2>
           <div id="status" class="status status-info">Ready.</div>
-
           <div class="actions-row">
             <button id="copy-json" class="secondary">Copy results as JSON</button>
           </div>
-
           <div id="summary" class="summary-card"></div>
           <div id="schedule-output"></div>
           <div id="remaining-output"></div>

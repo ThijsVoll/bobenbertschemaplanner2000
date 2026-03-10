@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+import csv
+import html
+import io
 import json
 import math
 import random
-import html
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
-from js import document, navigator, console, JSON
+from js import console, document, navigator
 from pyodide.ffi import create_proxy
 
 
@@ -54,6 +57,8 @@ EXAMPLE_PREFS = [
 ]
 
 LAST_RESULT = None
+REMOVE_PREF_PROXIES = []
+EVENT_PROXIES = []
 
 
 def _naam_index(teams: List[Team]) -> Dict[str, Team]:
@@ -103,16 +108,12 @@ def _pareer_gretig(
     pool = beschikbaar[:]
     pool.sort(key=lambda t: (t.niveau, t.geslacht != "Mixed", t.naam))
     gebruikt: Set[Team] = set()
-
     for i, t in enumerate(pool):
         if t in gebruikt:
             continue
-
         kandidaten = [
-            k for k in pool[i + 1 :]
-            if k not in gebruikt and _geslacht_compatibel(t, k)
+            k for k in pool[i + 1 :] if k not in gebruikt and _geslacht_compatibel(t, k)
         ]
-
         kandidaten.sort(
             key=lambda k: (
                 (frozenset((t.naam, k.naam)) in al_gespeeld),
@@ -122,12 +123,10 @@ def _pareer_gretig(
         )
         if not kandidaten:
             continue
-
         k = kandidaten[0]
         paren.append((t, k))
         gebruikt.add(t)
         gebruikt.add(k)
-
     return paren
 
 
@@ -142,7 +141,9 @@ def genereer_schema(
         random.seed(seed)
 
     naam2team = _naam_index(teams)
-    resterend_verplicht: Dict[Team, int] = {t: VERPLICHTE_WEDSTRIJDEN.get(t.niveau, 0) for t in teams}
+    resterend_verplicht: Dict[Team, int] = {
+        t: VERPLICHTE_WEDSTRIJDEN.get(t.niveau, 0) for t in teams
+    }
     resterend_opt: Dict[Team, int] = {t: OPTIONELE_WEDSTRIJDEN.get(t.niveau, 0) for t in teams}
     laatste_ronde: Dict[Team, Optional[int]] = {t: None for t in teams}
 
@@ -152,10 +153,8 @@ def genereer_schema(
             voorkeur_set.add(frozenset((a, b)))
 
     ongeplande_voorkeuren = set(voorkeur_set)
-
     voorkeur_lijst = list(voorkeur_set)
     random.shuffle(voorkeur_lijst)
-
     voorkeur_doelronde: Dict[frozenset, int] = {}
     for i, pair in enumerate(voorkeur_lijst):
         voorkeur_doelronde[pair] = (i % n_rondes) + 1
@@ -230,26 +229,21 @@ def genereer_schema(
             laatste_ronde[a] = ronde
             laatste_ronde[b] = ronde
             al_gespeeld.add(frozenset((a.naam, b.naam)))
-
             for t in (a, b):
                 if resterend_verplicht[t] > 0:
                     resterend_verplicht[t] -= 1
                 elif resterend_opt[t] > 0:
                     resterend_opt[t] -= 1
-
             ongeplande_voorkeuren.discard(pair)
 
         for fase in ("verplicht", "opt"):
             if veld_teller > n_velden:
                 break
-
             alleen_verplicht = fase == "verplicht"
             beschikbaar = [
-                t for t in _beschikbare_teams(ronde, alleen_verplicht)
-                if t not in geplande_deze_ronde
+                t for t in _beschikbare_teams(ronde, alleen_verplicht) if t not in geplande_deze_ronde
             ]
             paren = _pareer_gretig(beschikbaar, al_gespeeld, ronde)
-
             for a, b in paren:
                 if veld_teller > n_velden:
                     break
@@ -268,7 +262,6 @@ def genereer_schema(
                 laatste_ronde[a] = ronde
                 laatste_ronde[b] = ronde
                 al_gespeeld.add(frozenset((a.naam, b.naam)))
-
                 for t in (a, b):
                     if resterend_verplicht[t] > 0:
                         resterend_verplicht[t] -= 1
@@ -280,7 +273,9 @@ def genereer_schema(
     return wedstrijden, rest_verplicht_by_name, rest_opt_by_name
 
 
-def serialize_results(wedstrijden: List[Match], rest_verplicht: Dict[str, int], rest_opt: Dict[str, int]) -> dict:
+def serialize_results(
+    wedstrijden: List[Match], rest_verplicht: Dict[str, int], rest_opt: Dict[str, int]
+) -> dict:
     return {
         "matches": [
             {
@@ -313,12 +308,13 @@ def render_results(results: dict) -> None:
 
     matches = results["matches"]
     rounds = sorted({m["ronde"] for m in matches})
+
     summary_el.innerHTML = f"""
-        <div class="summary-list">
-          <div class="summary-item"><span class="muted">Total matches</span><strong>{len(matches)}</strong></div>
-          <div class="summary-item"><span class="muted">Rounds used</span><strong>{len(rounds)}</strong></div>
-          <div class="summary-item"><span class="muted">Unmet required slots</span><strong>{sum(results['remaining_required'].values())}</strong></div>
-        </div>
+      <div class="summary-list">
+        <div class="summary-item"><span class="muted">Total matches</span><strong>{len(matches)}</strong></div>
+        <div class="summary-item"><span class="muted">Rounds used</span><strong>{len(rounds)}</strong></div>
+        <div class="summary-item"><span class="muted">Unmet required slots</span><strong>{sum(results['remaining_required'].values())}</strong></div>
+      </div>
     """
 
     grouped = defaultdict(list)
@@ -353,6 +349,7 @@ def render_results(results: dict) -> None:
             </section>
             """
         )
+
     output_el.innerHTML = ''.join(schedule_parts) if schedule_parts else '<p class="muted">No matches scheduled.</p>'
 
     remaining_rows = []
@@ -388,10 +385,316 @@ def set_status(message: str, kind: str = "info") -> None:
     el.textContent = message
 
 
+def _normalize_header(value: str) -> str:
+    return str(value or "").strip().lower().replace(" ", "").replace("_", "").replace("-", "")
+
+
+def _pick_column(field_map: Dict[str, str], *aliases: str) -> str:
+    for alias in aliases:
+        key = _normalize_header(alias)
+        if key in field_map:
+            return field_map[key]
+    raise ValueError(
+        "Missing required CSV column. Expected one of: " + ", ".join(aliases)
+    )
+
+
+def parse_teams_csv_text(csv_text: str) -> List[dict]:
+    if not csv_text or not csv_text.strip():
+        raise ValueError("The selected CSV file is empty.")
+
+    sample = csv_text[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;	")
+    except csv.Error:
+        class _Default(csv.excel):
+            delimiter = ","
+        dialect = _Default
+
+    reader = csv.DictReader(io.StringIO(csv_text), dialect=dialect)
+    if not reader.fieldnames:
+        raise ValueError("Could not read CSV headers.")
+
+    field_map = {_normalize_header(name): name for name in reader.fieldnames if name is not None}
+
+    naam_col = _pick_column(field_map, "naam", "team", "teamnaam", "name")
+    niveau_col = _pick_column(field_map, "niveau", "level")
+    geslacht_col = _pick_column(field_map, "geslacht", "gender")
+    leeftijd_col = _pick_column(field_map, "leeftijd", "age", "leeftijdscategorie")
+
+    teams = []
+    for row_number, row in enumerate(reader, start=2):
+        if not row:
+            continue
+
+        naam = str(row.get(naam_col, "") or "").strip()
+        niveau_text = str(row.get(niveau_col, "") or "").strip()
+        geslacht = str(row.get(geslacht_col, "") or "").strip()
+        leeftijd = str(row.get(leeftijd_col, "") or "").strip()
+
+        if not any([naam, niveau_text, geslacht, leeftijd]):
+            continue
+
+        if not naam:
+            raise ValueError(f"CSV row {row_number}: column '{naam_col}' is empty.")
+        if not niveau_text:
+            raise ValueError(f"CSV row {row_number}: column '{niveau_col}' is empty.")
+        if not geslacht:
+            raise ValueError(f"CSV row {row_number}: column '{geslacht_col}' is empty.")
+        if not leeftijd:
+            raise ValueError(f"CSV row {row_number}: column '{leeftijd_col}' is empty.")
+
+        try:
+            niveau = int(niveau_text)
+        except ValueError as exc:
+            raise ValueError(
+                f"CSV row {row_number}: niveau must be an integer, got '{niveau_text}'."
+            ) from exc
+
+        teams.append(
+            {
+                "niveau": niveau,
+                "geslacht": geslacht,
+                "naam": naam,
+                "leeftijd": leeftijd,
+            }
+        )
+
+    if not teams:
+        raise ValueError("No team rows were found in the CSV file.")
+
+    return teams
+
+
+def _safe_load_json_array(element_id: str) -> list:
+    raw = document.getElementById(element_id).value.strip()
+    if not raw:
+        return []
+    parsed = json.loads(raw)
+    if not isinstance(parsed, list):
+        raise ValueError(f"{element_id} must contain a JSON array.")
+    return parsed
+
+
+def get_team_dicts() -> List[dict]:
+    data = _safe_load_json_array("teams-json")
+    teams = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError("Each team must be a JSON object.")
+        teams.append(item)
+    return teams
+
+
+def get_team_names() -> List[str]:
+    teams = get_team_dicts()
+    names = []
+    for item in teams:
+        name = str(item.get("naam", "") or "").strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def get_preferences() -> List[List[str]]:
+    data = _safe_load_json_array("prefs-json")
+    prefs = []
+    for pair in data:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            raise ValueError("Each preference must be a 2-item array, e.g. ['Team A', 'Team B']")
+        prefs.append([str(pair[0]), str(pair[1])])
+    return prefs
+
+
+def set_preferences(prefs: List[List[str]]) -> None:
+    document.getElementById("prefs-json").value = json.dumps(prefs, indent=2, ensure_ascii=False)
+
+
+def populate_preference_dropdowns() -> None:
+    team_names = sorted(set(get_team_names()))
+    select_a = document.getElementById("pref-team-a")
+    select_b = document.getElementById("pref-team-b")
+    empty_hint = document.getElementById("prefs-editor-empty")
+
+    select_a.innerHTML = ""
+    select_b.innerHTML = ""
+
+    if not team_names:
+        placeholder_a = document.createElement("option")
+        placeholder_a.value = ""
+        placeholder_a.textContent = "Import teams first"
+        select_a.appendChild(placeholder_a)
+
+        placeholder_b = document.createElement("option")
+        placeholder_b.value = ""
+        placeholder_b.textContent = "Import teams first"
+        select_b.appendChild(placeholder_b)
+
+        select_a.disabled = True
+        select_b.disabled = True
+        empty_hint.style.display = "block"
+        return
+
+    select_a.disabled = False
+    select_b.disabled = False
+    empty_hint.style.display = "none"
+
+    for name in team_names:
+        opt_a = document.createElement("option")
+        opt_a.value = name
+        opt_a.textContent = name
+        select_a.appendChild(opt_a)
+
+        opt_b = document.createElement("option")
+        opt_b.value = name
+        opt_b.textContent = name
+        select_b.appendChild(opt_b)
+
+    if len(team_names) > 1:
+        select_b.selectedIndex = 1
+    else:
+        select_b.selectedIndex = 0
+
+
+def render_preferences_editor() -> None:
+    global REMOVE_PREF_PROXIES
+
+    prefs_container = document.getElementById("prefs-list")
+    prefs_container.innerHTML = ""
+    REMOVE_PREF_PROXIES = []
+
+    try:
+        prefs = get_preferences()
+        valid_teams = set(get_team_names())
+    except Exception as exc:
+        row = document.createElement("div")
+        row.className = "status status-error"
+        row.textContent = f"Preferences UI unavailable: {exc}"
+        prefs_container.appendChild(row)
+        return
+
+    if not prefs:
+        row = document.createElement("div")
+        row.className = "muted small"
+        row.textContent = "No preferences added yet."
+        prefs_container.appendChild(row)
+        return
+
+    for idx, pair in enumerate(prefs):
+        a_name, b_name = pair
+        row = document.createElement("div")
+        row.style.display = "flex"
+        row.style.justifyContent = "space-between"
+        row.style.alignItems = "center"
+        row.style.gap = "12px"
+        row.style.padding = "10px 12px"
+        row.style.border = "1px solid rgba(255,255,255,0.12)"
+        row.style.borderRadius = "10px"
+
+        label = document.createElement("div")
+        label_text = f"{a_name} ↔ {b_name}"
+        if a_name not in valid_teams or b_name not in valid_teams:
+            label_text += " (team missing from current import)"
+        label.textContent = label_text
+        row.appendChild(label)
+
+        button = document.createElement("button")
+        button.type = "button"
+        button.className = "secondary"
+        button.textContent = "Remove"
+
+        def _make_remove_handler(index: int):
+            def _handler(event=None):
+                prefs_now = get_preferences()
+                if 0 <= index < len(prefs_now):
+                    del prefs_now[index]
+                    set_preferences(prefs_now)
+                    render_preferences_editor()
+                    set_status("Preference removed.", "success")
+            return _handler
+
+        proxy = create_proxy(_make_remove_handler(idx))
+        REMOVE_PREF_PROXIES.append(proxy)
+        button.addEventListener("click", proxy)
+        row.appendChild(button)
+
+        prefs_container.appendChild(row)
+
+
+def sync_preferences_ui() -> None:
+    populate_preference_dropdowns()
+    render_preferences_editor()
+
+
 def load_example_data(*args):
     document.getElementById("teams-json").value = json.dumps(EXAMPLE_TEAMS, indent=2, ensure_ascii=False)
     document.getElementById("prefs-json").value = json.dumps(EXAMPLE_PREFS, indent=2, ensure_ascii=False)
+    sync_preferences_ui()
     set_status("Loaded example dataset.", "success")
+
+
+async def import_csv_async() -> None:
+    file_input = document.getElementById("teams-csv-file")
+    files = file_input.files
+    if not files or files.length == 0:
+        set_status("Choose a CSV file first.", "error")
+        return
+
+    file = files.item(0)
+    set_status(f"Reading {file.name}...", "info")
+
+    try:
+        csv_text = await file.text()
+        teams = parse_teams_csv_text(str(csv_text))
+        document.getElementById("teams-json").value = json.dumps(
+            teams, indent=2, ensure_ascii=False
+        )
+        sync_preferences_ui()
+        set_status(f"Imported {len(teams)} teams from {file.name}.", "success")
+    except Exception as exc:
+        console.error(str(exc))
+        set_status(f"CSV import error: {exc}", "error")
+
+
+def on_import_csv(*args):
+    asyncio.create_task(import_csv_async())
+
+
+def on_add_preference(*args):
+    try:
+        team_a = document.getElementById("pref-team-a").value.strip()
+        team_b = document.getElementById("pref-team-b").value.strip()
+
+        if not team_a or not team_b:
+            raise ValueError("Select two teams first.")
+        if team_a == team_b:
+            raise ValueError("A preference must contain two different teams.")
+
+        prefs = get_preferences()
+        pair = [team_a, team_b]
+        reverse_pair = [team_b, team_a]
+        if pair in prefs or reverse_pair in prefs:
+            raise ValueError("This preference already exists.")
+
+        prefs.append(pair)
+        set_preferences(prefs)
+        render_preferences_editor()
+        set_status(f"Added preference: {team_a} ↔ {team_b}", "success")
+    except Exception as exc:
+        console.error(str(exc))
+        set_status(f"Preference error: {exc}", "error")
+
+
+def on_teams_json_changed(*args):
+    try:
+        populate_preference_dropdowns()
+        render_preferences_editor()
+    except Exception:
+        populate_preference_dropdowns()
+
+
+def on_prefs_json_changed(*args):
+    render_preferences_editor()
 
 
 def read_inputs() -> tuple[list[Team], list[tuple[str, str]], int, int, Optional[int]]:
@@ -458,9 +761,24 @@ def on_copy_json(*args):
 
 
 def wire_events() -> None:
-    document.getElementById("generate-btn").addEventListener("click", create_proxy(on_generate))
-    document.getElementById("load-example").addEventListener("click", create_proxy(load_example_data))
-    document.getElementById("copy-json").addEventListener("click", create_proxy(on_copy_json))
+    global EVENT_PROXIES
+    EVENT_PROXIES = [
+        create_proxy(on_generate),
+        create_proxy(load_example_data),
+        create_proxy(on_copy_json),
+        create_proxy(on_import_csv),
+        create_proxy(on_add_preference),
+        create_proxy(on_teams_json_changed),
+        create_proxy(on_prefs_json_changed),
+    ]
+
+    document.getElementById("generate-btn").addEventListener("click", EVENT_PROXIES[0])
+    document.getElementById("load-example").addEventListener("click", EVENT_PROXIES[1])
+    document.getElementById("copy-json").addEventListener("click", EVENT_PROXIES[2])
+    document.getElementById("import-csv-btn").addEventListener("click", EVENT_PROXIES[3])
+    document.getElementById("add-pref-btn").addEventListener("click", EVENT_PROXIES[4])
+    document.getElementById("teams-json").addEventListener("change", EVENT_PROXIES[5])
+    document.getElementById("prefs-json").addEventListener("change", EVENT_PROXIES[6])
 
 
 wire_events()
