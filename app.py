@@ -626,12 +626,6 @@ def sync_preferences_ui() -> None:
     render_preferences_editor()
 
 
-def load_example_data(*args):
-    document.getElementById("teams-json").value = json.dumps(EXAMPLE_TEAMS, indent=2, ensure_ascii=False)
-    document.getElementById("prefs-json").value = json.dumps(EXAMPLE_PREFS, indent=2, ensure_ascii=False)
-    sync_preferences_ui()
-    set_status("Loaded example dataset.", "success")
-
 
 async def import_csv_async() -> None:
     file_input = document.getElementById("teams-csv-file")
@@ -730,14 +724,24 @@ def read_inputs() -> tuple[list[Team], list[tuple[str, str]], int, int, Optional
 def on_generate(*args):
     global LAST_RESULT
     try:
+
         teams, prefs, n_rondes, n_velden, seed = read_inputs()
-        wedstrijden, rest_verplicht, rest_opt = genereer_schema(
-            teams=teams,
-            voorkeuren=prefs,
-            n_rondes=n_rondes,
-            n_velden=n_velden,
-            seed=seed,
-        )
+        for _ in range(1000):
+            
+            wedstrijden, rest_verplicht, rest_opt = genereer_schema(
+                teams=teams,
+                voorkeuren=prefs,
+                n_rondes=n_rondes,
+                n_velden=n_velden,
+                seed=seed,
+            )
+
+            if not any(rest_verplicht.values()):
+                break
+            else:
+                seed = random.randint(1, 1000)
+                document.getElementById("seed").value = seed
+
         LAST_RESULT = serialize_results(wedstrijden, rest_verplicht, rest_opt)
         render_results(LAST_RESULT)
         set_status(f"Generated {len(wedstrijden)} matches successfully.", "success")
@@ -764,7 +768,6 @@ def wire_events() -> None:
     global EVENT_PROXIES
     EVENT_PROXIES = [
         create_proxy(on_generate),
-        create_proxy(load_example_data),
         create_proxy(on_copy_json),
         create_proxy(on_import_csv),
         create_proxy(on_add_preference),
@@ -782,4 +785,3 @@ def wire_events() -> None:
 
 
 wire_events()
-load_example_data()

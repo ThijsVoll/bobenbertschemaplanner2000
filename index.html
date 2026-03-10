@@ -13,21 +13,21 @@
     <main class="container">
       <header class="hero">
         <div>
-          <p class="eyebrow">GitHub Pages-ready</p>
+          <p class="eyebrow">Thijs Vollebregt 2026</p>
           <h1>Bob & Bert schema planner 2000</h1>
           <p class="lead">
             Das lekker. Hoeven Chris en Nanette het niet meer te doen
           </p>
         </div>
         <div class="header-actions">
-          <button id="load-example" class="secondary">Load example</button>
           <button id="generate-btn">Schema genereren</button>
+          <button id="min-fields-calc-button">Velden berkenen</button>
         </div>
       </header>
 
       <section class="grid">
         <section class="panel">
-          <h2>Inputs</h2>
+          <h2>Invoer</h2>
 
           <div class="field-row params">
             <label>
@@ -45,21 +45,16 @@
           </div>
 
           <label class="field-block">
-            <span>Import teams from CSV</span>
+            <span>teams CSV importeren</span>
             <div class="field-row" style="align-items: end; gap: 12px; flex-wrap: wrap;">
               <input id="teams-csv-file" type="file" accept=".csv,text/csv" />
               <button id="import-csv-btn" type="button" class="secondary">Import CSV</button>
             </div>
-            <small class="muted">Expected columns: naam, niveau, geslacht, leeftijd (case-insensitive; comma/semicolon/tab-separated all supported).</small>
-          </label>
-
-          <label class="field-block">
-            <span>Teams (JSON)</span>
-            <textarea id="teams-json" spellcheck="false"></textarea>
+            <small class="muted">Verwachtte kolommen: naam, niveau, geslacht, leeftijd.</small>
           </label>
 
           <section class="field-block">
-            <span>Preferences builder</span>
+            <span>Voorkeur wedstrijden</span>
             <div class="field-row" style="align-items: end; gap: 12px; flex-wrap: wrap;">
               <label style="min-width: 220px; flex: 1;">
                 <span>Team A</span>
@@ -72,7 +67,7 @@
               <button id="add-pref-btn" type="button" class="secondary">Add preference</button>
             </div>
             <div id="prefs-editor-empty" class="muted small" style="margin-top: 8px;">
-              Import teams first to populate the dropdowns.
+              Eerst teams importeren.
             </div>
             <div id="prefs-list" style="display: grid; gap: 8px; margin-top: 12px;"></div>
           </section>
