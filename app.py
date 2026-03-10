@@ -416,7 +416,7 @@ def read_inputs() -> tuple[list[Team], list[tuple[str, str]], int, int, Optional
     prefs = []
     for pair in prefs_raw:
         if not isinstance(pair, list) and not isinstance(pair, tuple):
-            raise ValueError("Each preference must be a 2-item array, e.g. ["Team A", "Team B"]")
+            raise ValueError("Each preference must be a 2-item array, e.g. ['Team A', 'Team B']")
         if len(pair) != 2:
             raise ValueError("Each preference must contain exactly 2 team names.")
         prefs.append((str(pair[0]), str(pair[1])))
