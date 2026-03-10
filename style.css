@@ -123,6 +123,10 @@ textarea {
   margin-top: 16px;
 }
 
+.teams-json {
+  display: None;
+}
+
 button {
   cursor: pointer;
   border: 0;

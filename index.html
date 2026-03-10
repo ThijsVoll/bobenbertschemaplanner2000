@@ -54,8 +54,7 @@
           </label>
 
           <label class="field-block">
-            <span>Teams (JSON)</span>
-            <textarea id="teams-json" spellcheck="false"></textarea>
+            <textarea id="teams-json" spellcheck="false" hidden></textarea>
           </label>
 
           <section class="field-block">
@@ -78,21 +77,8 @@
           </section>
 
           <label class="field-block">
-            <span>Preferences (JSON array of pairs)</span>
-            <textarea id="prefs-json" spellcheck="false"></textarea>
+            <textarea id="prefs-json" spellcheck="false" hidden></textarea>
           </label>
-
-          <details class="notes" open>
-            <summary>Expected team JSON shape</summary>
-            <pre><code>[
-  {
-    "niveau": 1,
-    "geslacht": "Heren",
-    "naam": "Team A",
-    "leeftijd": "Jong"
-  }
-]</code></pre>
-          </details>
         </section>
 
         <section class="panel">
