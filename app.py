@@ -631,7 +631,6 @@ async def import_csv_async() -> None:
     file_input = document.getElementById("teams-csv-file")
     files = file_input.files
     if not files or files.length == 0:
-        set_status("Choose a CSV file first.", "error")
         return
 
     file = files.item(0)
@@ -650,7 +649,7 @@ async def import_csv_async() -> None:
         set_status(f"CSV import error: {exc}", "error")
 
 
-def on_import_csv(*args):
+def on_teams_csv_selected(*args):
     asyncio.create_task(import_csv_async())
 
 def load_example_data(*args):
@@ -769,7 +768,7 @@ def on_calculate(*args):
     try:
 
         teams, prefs, n_rondes, n_velden, seed = read_inputs()
-        succces = False
+        succes = False
         for _ in range(10000):
 
             
@@ -791,10 +790,10 @@ def on_calculate(*args):
         LAST_RESULT = serialize_results(wedstrijden, rest_verplicht, rest_opt)
         render_results(LAST_RESULT)
 
-        if succces:
+        if succes:
             set_status(f"Generated {len(wedstrijden)} matches successfully.", "success")
         else:
-            set_status(f"Combinatie niet mogelijk.", "success")
+            set_status(f"Combinatie niet mogelijk.", "error")
     except Exception as exc:
         console.error(str(exc))
         set_status(f"Error: {exc}", "error")
@@ -819,7 +818,7 @@ def wire_events() -> None:
     EVENT_PROXIES = [
         create_proxy(on_generate),
         create_proxy(on_copy_json),
-        create_proxy(on_import_csv),
+        create_proxy(on_teams_csv_selected),
         create_proxy(on_add_preference),
         create_proxy(on_teams_json_changed),
         create_proxy(on_prefs_json_changed),
@@ -828,7 +827,7 @@ def wire_events() -> None:
 
     document.getElementById("generate-btn").addEventListener("click", EVENT_PROXIES[0])
     document.getElementById("copy-json").addEventListener("click", EVENT_PROXIES[1])
-    document.getElementById("import-csv-btn").addEventListener("click", EVENT_PROXIES[2])
+    document.getElementById("teams-csv-file").addEventListener("change", EVENT_PROXIES[2])
     document.getElementById("add-pref-btn").addEventListener("click", EVENT_PROXIES[3])
     document.getElementById("teams-json").addEventListener("change", EVENT_PROXIES[4])
     document.getElementById("prefs-json").addEventListener("change", EVENT_PROXIES[5])
