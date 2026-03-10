@@ -776,12 +776,11 @@ def wire_events() -> None:
     ]
 
     document.getElementById("generate-btn").addEventListener("click", EVENT_PROXIES[0])
-    document.getElementById("load-example").addEventListener("click", EVENT_PROXIES[1])
-    document.getElementById("copy-json").addEventListener("click", EVENT_PROXIES[2])
-    document.getElementById("import-csv-btn").addEventListener("click", EVENT_PROXIES[3])
-    document.getElementById("add-pref-btn").addEventListener("click", EVENT_PROXIES[4])
-    document.getElementById("teams-json").addEventListener("change", EVENT_PROXIES[5])
-    document.getElementById("prefs-json").addEventListener("change", EVENT_PROXIES[6])
+    document.getElementById("copy-json").addEventListener("click", EVENT_PROXIES[1])
+    document.getElementById("import-csv-btn").addEventListener("click", EVENT_PROXIES[2])
+    document.getElementById("add-pref-btn").addEventListener("click", EVENT_PROXIES[3])
+    document.getElementById("teams-json").addEventListener("change", EVENT_PROXIES[4])
+    document.getElementById("prefs-json").addEventListener("change", EVENT_PROXIES[5])
 
 
 wire_events()
