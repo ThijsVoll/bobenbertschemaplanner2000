@@ -508,3 +508,37 @@ button:hover {
 #teams-list tbody tr:first-child td {
   border-top: none;
 }
+.teams-filter-header {
+  min-width: 220px;
+}
+
+.teams-filter-trigger {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--muted);
+  padding: 0;
+  border-radius: 0;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.teams-filter-trigger:hover {
+  color: var(--text);
+  transform: none;
+}
+
+.teams-filter-input {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(9, 14, 30, 0.9);
+  color: var(--text);
+}
+
+.teams-filter-input.hidden {
+  display: none;
+}

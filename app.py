@@ -48,14 +48,56 @@ EVENT_PROXIES = []
 OUTPUT_VIEW = "table"
 
 
+TEAM_FILTER_PROXIES = []
+TEAM_NAME_FILTER = ""
+TEAM_NAME_FILTER_OPEN = False
+
+
 def _set_teams_json(teams_list: List[dict]) -> None:
     """Write teams back into the hidden JSON textarea."""
     document.getElementById("teams-json").value = json.dumps(teams_list, indent=2, ensure_ascii=False)
 
+def apply_team_name_filter() -> None:
+    query = TEAM_NAME_FILTER.strip().lower()
+    rows = document.querySelectorAll("#teams-list tbody tr")
+
+    for row in rows:
+        team_name = (row.getAttribute("data-team-name") or "").lower()
+        row.style.display = "" if query in team_name else "none"
+
+
+def on_toggle_team_name_filter(event=None):
+    global TEAM_NAME_FILTER_OPEN
+
+    TEAM_NAME_FILTER_OPEN = not TEAM_NAME_FILTER_OPEN
+    render_teams_editor()
+
+    if TEAM_NAME_FILTER_OPEN:
+        input_el = document.getElementById("team-name-filter-input")
+        if input_el is not None:
+            input_el.focus()
+            try:
+                length = len(TEAM_NAME_FILTER)
+                input_el.setSelectionRange(length, length)
+            except Exception:
+                pass
+
+
+def on_team_name_filter_input(event=None):
+    global TEAM_NAME_FILTER
+    input_el = document.getElementById("team-name-filter-input")
+    if input_el is None:
+        return
+
+    TEAM_NAME_FILTER = str(input_el.value or "")
+    apply_team_name_filter()
+
 def render_teams_editor() -> None:
     """Render the live teams table with delete buttons."""
-    global REMOVE_TEAM_PROXIES
+    global REMOVE_TEAM_PROXIES, TEAM_FILTER_PROXIES
+    
     REMOVE_TEAM_PROXIES = []
+    TEAM_FILTER_PROXIES = []
 
     container = document.getElementById("teams-list")
     if container is None:
@@ -76,9 +118,26 @@ def render_teams_editor() -> None:
     teams_sorted = sorted(teams, key=_key)
 
     # Build table skeleton
+    filter_value = html.escape(TEAM_NAME_FILTER, quote=True)
+    filter_input_class = "teams-filter-input" if TEAM_NAME_FILTER_OPEN else "teams-filter-input hidden"
+
     table_html = [
         '<table class="teams-table">',
-        '<thead><tr><th>Naam</th><th>Geslacht</th><th>Leeftijd</th><th>Niveau</th><th></th></tr></thead>',
+        '<thead>',
+        '<tr>',
+        (
+            '<th class="teams-filter-header">'
+            '<button type="button" class="teams-filter-trigger" id="team-name-filter-toggle">Naam</button>'
+            f'<input id="team-name-filter-input" class="{filter_input_class}" '
+            f'type="text" placeholder="Filter op naam..." value="{filter_value}" />'
+            '</th>'
+        ),
+        '<th>Geslacht</th>',
+        '<th>Leeftijd</th>',
+        '<th>Niveau</th>',
+        '<th></th>',
+        '</tr>',
+        '</thead>',
         '<tbody>'
     ]
     for idx, t in enumerate(teams_sorted):
@@ -91,7 +150,7 @@ def render_teams_editor() -> None:
             niveau = t.get("niveau", "")
         row_id = f"team-row-{idx}"
         table_html.append(
-            f'<tr id="{row_id}">'
+            f'<tr id="{row_id}" data-team-name="{naam.lower()}">'
             f'<td>{naam}</td>'
             f'<td>{geslacht}</td>'
             f'<td>{leeftijd}</td>'
@@ -128,6 +187,20 @@ def render_teams_editor() -> None:
         btn = document.getElementById(f"del-team-{idx}")
         if btn is not None:
             btn.addEventListener("click", proxy)
+
+    toggle_btn = document.getElementById("team-name-filter-toggle")
+    if toggle_btn is not None:
+        toggle_proxy = create_proxy(on_toggle_team_name_filter)
+        TEAM_FILTER_PROXIES.append(toggle_proxy)
+        toggle_btn.addEventListener("click", toggle_proxy)
+
+    input_el = document.getElementById("team-name-filter-input")
+    if input_el is not None:
+        input_proxy = create_proxy(on_team_name_filter_input)
+        TEAM_FILTER_PROXIES.append(input_proxy)
+        input_el.addEventListener("input", input_proxy)
+
+    apply_team_name_filter()
 
 def on_add_team(*args):
     """Add a single team from the inline form."""
