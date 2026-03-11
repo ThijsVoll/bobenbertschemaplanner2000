@@ -16,7 +16,7 @@
       type="module"
       src="https://pyscript.net/releases/2026.3.1/core.js"
     ></script>
-    <script 
+    <script
       src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js">
     </script>
     <link rel="stylesheet" href="./style.css" />
@@ -26,15 +26,16 @@
       <header class="hero">
         <div>
           <p class="eyebrow">Thijs Vollebregt 2026</p>
-          <h1>Bob &amp; Bert schema planner 2000</h1>
+          <h1>Bob & Bert schema planner 2000</h1>
           <p class="lead">
             Das lekker. Hoeven Chris en Nanette het niet meer te doen
           </p>
         </div>
-
         <div class="header-actions">
           <button id="generate-btn">Schema genereren</button>
           <button id="min-fields-calc-button">Velden berekenen</button>
+          <!-- NEW: capacity button -->
+          <button id="capacity-btn">Extra teams berekenen</button>
         </div>
       </header>
 
@@ -47,12 +48,10 @@
               <span>Rondes</span>
               <input id="n-rondes" type="number" min="1" value="7" />
             </label>
-
             <label>
               <span>Aantal velden</span>
               <input id="n-velden" type="number" min="1" value="12" />
             </label>
-
             <label>
               <span>Seed</span>
               <input id="seed" type="number" value="42" />
@@ -76,24 +75,64 @@
             </small>
           </label>
 
+          <!-- === Teams beheren (inline add/remove) === -->
+<section class="field-block">
+  <span>Teams beheren</span>
+
+  <div class="field-row" style="grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+    <label>
+      <span>Naam</span>
+      <input id="new-team-name" type="text" placeholder="Teamnaam" />
+    </label>
+
+    <label>
+      <span>Geslacht</span>
+      <select id="new-team-geslacht">
+        <option value="Mixed">Mixed</option>
+        <option value="Heren">Heren</option>
+        <option value="Dames">Dames</option>
+      </select>
+    </label>
+
+    <label>
+      <span>Leeftijd</span>
+      <select id="new-team-leeftijd">
+        <option value="Jong">Jong</option>
+        <option value="Midden" selected>Midden</option>
+        <option value="Oud">Oud</option>
+      </select>
+    </label>
+
+    <label>
+      <span>Niveau</span>
+      <input id="new-team-niveau" type="number" min="1" value="1" />
+    </label>
+  </div>
+
+  <div class="actions-row" style="margin-top: 10px;">
+    <button id="add-team-btn" type="button">➕ Team toevoegen</button>
+  </div>
+
+  <!-- Live list of current teams -->
+  <div id="teams-list" class="summary-card" style="margin-top: 12px;"></div>
+</section>
+<!-- === /Teams beheren === -->
+
           <label class="field-block">
             <textarea id="teams-json" spellcheck="false" hidden></textarea>
           </label>
 
           <section class="field-block">
             <span>Voorkeur wedstrijden</span>
-
             <div class="pref-row">
               <label class="pref-select-wrap">
                 <span>Team A</span>
                 <select id="pref-team-a"></select>
               </label>
-
               <label class="pref-select-wrap">
                 <span>Team B</span>
                 <select id="pref-team-b"></select>
               </label>
-
               <button
                 id="add-pref-btn"
                 type="button"
@@ -102,7 +141,6 @@
                 Voorkeur toevoegen
               </button>
             </div>
-
             <div
               id="prefs-editor-empty"
               class="muted small"
@@ -110,7 +148,6 @@
             >
               Eerst teams importeren.
             </div>
-
             <div id="prefs-list" style="display: grid; gap: 8px; margin-top: 12px;"></div>
           </section>
 
@@ -121,7 +158,6 @@
 
         <section class="panel">
           <h2>Output</h2>
-
           <div id="status" class="status status-info">Ready.</div>
 
           <div class="actions-row">
@@ -138,10 +174,11 @@
           </div>
 
           <div id="summary" class="summary-card"></div>
+          <!-- NEW: capacity result card -->
+          <div id="capacity-summary" class="summary-card"></div>
 
           <div id="schedule-output"></div>
           <div id="timeline-output" class="hidden"></div>
-
           <div id="remaining-output"></div>
         </section>
       </section>

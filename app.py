@@ -32,6 +32,9 @@ class Match:
 
 VERPLICHTE_WEDSTRIJDEN = {1: 3, 2: 3, 3: 2}
 OPTIONELE_WEDSTRIJDEN = {1: 0, 2: 0, 3: 1}
+CAPACITY_SEED_CACHE: Dict[Tuple[int, str, str], int] = {}
+REMOVE_TEAM_PROXIES = []  # keep references to delete-button handlers (avoid GC)
+
 
 EXAMPLE_TEAMS = [
     {"niveau": 1, "geslacht": "Heren", "naam": "Falcons", "leeftijd": "Jong"},
@@ -59,6 +62,137 @@ LAST_RESULT = None
 REMOVE_PREF_PROXIES = []
 EVENT_PROXIES = []
 OUTPUT_VIEW = "table"
+
+
+def _set_teams_json(teams_list: List[dict]) -> None:
+    """Write teams back into the hidden JSON textarea."""
+    document.getElementById("teams-json").value = json.dumps(teams_list, indent=2, ensure_ascii=False)
+
+def render_teams_editor() -> None:
+    """Render the live teams table with delete buttons."""
+    global REMOVE_TEAM_PROXIES
+    REMOVE_TEAM_PROXIES = []
+
+    container = document.getElementById("teams-list")
+    if container is None:
+        return
+
+    try:
+        teams = get_team_dicts()  # reads from #teams-json
+    except Exception as exc:
+        container.innerHTML = f'<div class="status status-error">Teams UI unavailable: {html.escape(str(exc))}</div>'
+        return
+
+    if not teams:
+        container.innerHTML = '<div class="muted small">Nog geen teams toegevoegd. Importeer een CSV of voeg teams toe via het formulier hierboven.</div>'
+        return
+
+    # Sort by (niveau, geslacht, naam) for readability
+    def _key(t: dict): return (int(t.get("niveau", 0)), str(t.get("geslacht","")), str(t.get("naam","")))
+    teams_sorted = sorted(teams, key=_key)
+
+    # Build table skeleton
+    table_html = [
+        '<table class="teams-table">',
+        '<thead><tr><th>Naam</th><th>Geslacht</th><th>Leeftijd</th><th>Niveau</th><th></th></tr></thead>',
+        '<tbody>'
+    ]
+    for idx, t in enumerate(teams_sorted):
+        naam = html.escape(str(t.get("naam","")))
+        geslacht = html.escape(str(t.get("geslacht","")))
+        leeftijd = html.escape(str(t.get("leeftijd","")))
+        try:
+            niveau = int(t.get("niveau", 0))
+        except Exception:
+            niveau = t.get("niveau", "")
+        row_id = f"team-row-{idx}"
+        table_html.append(
+            f'<tr id="{row_id}">'
+            f'<td>{naam}</td>'
+            f'<td>{geslacht}</td>'
+            f'<td>{leeftijd}</td>'
+            f'<td>{niveau}</td>'
+            f'<td><button type="button" class="secondary" id="del-team-{idx}">Verwijderen</button></td>'
+            f'</tr>'
+        )
+    table_html.append('</tbody></table>')
+    container.innerHTML = "".join(table_html)
+
+    # Wire delete buttons. We remove by "naam" (names must be unique in your scheduler). [2](https://singlebuoy-my.sharepoint.com/personal/thijs_vollebregt_sbmoffshore_com/Documents/Microsoft%20Copilot%20Chat%20Files/app.py)
+    naam2 = {str(t.get("naam","")): t for t in teams}  # original list
+    name_list = [str(t.get("naam","")) for t in teams_sorted]
+
+    for idx, name in enumerate(name_list):
+        def _make_delete_handler(team_name: str):
+            def _handler(event=None):
+                try:
+                    curr = get_team_dicts()
+                    new_list = [x for x in curr if str(x.get("naam","")) != team_name]
+                    if len(new_list) == len(curr):
+                        set_status(f"Team '{team_name}' niet gevonden.", "error")
+                        return
+                    _set_teams_json(new_list)
+                    sync_preferences_ui()       # refresh dropdowns/editor for preferences
+                    render_teams_editor()       # refresh this table
+                    set_status(f"Team '{team_name}' verwijderd.", "success")
+                except Exception as exc:
+                    console.error(str(exc))
+                    set_status(f"Error: {exc}", "error")
+            return _handler
+        proxy = create_proxy(_make_delete_handler(name))
+        REMOVE_TEAM_PROXIES.append(proxy)
+        btn = document.getElementById(f"del-team-{idx}")
+        if btn is not None:
+            btn.addEventListener("click", proxy)
+
+def on_add_team(*args):
+    """Add a single team from the inline form."""
+    try:
+        name = document.getElementById("new-team-name").value.strip()
+        geslacht = document.getElementById("new-team-geslacht").value.strip()
+        leeftijd = document.getElementById("new-team-leeftijd").value.strip()
+        niv_text = document.getElementById("new-team-niveau").value.strip()
+
+        if not name:
+            raise ValueError("Naam is verplicht.")
+        if not geslacht:
+            raise ValueError("Geslacht is verplicht.")
+        if not leeftijd:
+            raise ValueError("Leeftijd is verplicht.")
+        try:
+            niveau = int(niv_text)
+        except Exception:
+            raise ValueError("Niveau moet een geheel getal zijn.")
+
+        # Uniqueness: your scheduler requires unique names. [2](https://singlebuoy-my.sharepoint.com/personal/thijs_vollebregt_sbmoffshore_com/Documents/Microsoft%20Copilot%20Chat%20Files/app.py)
+        existing_names = set(get_team_names())
+        if name in existing_names:
+            raise ValueError(f"Teamnaam '{name}' bestaat al. Kies een unieke naam.")
+
+        team_obj = {
+            "niveau": niveau,
+            "geslacht": geslacht,
+            "naam": name,
+            "leeftijd": leeftijd,
+        }
+        curr = get_team_dicts()
+        curr.append(team_obj)
+        _set_teams_json(curr)
+
+        # Clear small form
+        document.getElementById("new-team-name").value = ""
+        document.getElementById("new-team-niveau").value = "1"
+        document.getElementById("new-team-geslacht").value = "Mixed"
+        document.getElementById("new-team-leeftijd").value = "Midden"
+
+        # Keep the rest of the UI in sync (your existing helper) and re-render this table. [2](https://singlebuoy-my.sharepoint.com/personal/thijs_vollebregt_sbmoffshore_com/Documents/Microsoft%20Copilot%20Chat%20Files/app.py)
+        sync_preferences_ui()
+        render_teams_editor()
+
+        set_status(f"Team '{name}' toegevoegd.", "success")
+    except Exception as exc:
+        console.error(str(exc))
+        set_status(f"Error: {exc}", "error")
 
 
 def _naam_index(teams: List[Team]) -> Dict[str, Team]:
@@ -114,7 +248,10 @@ def _pareer_gretig(
             continue
 
         kandidaten = [
-            k for k in pool[i + 1:] if k not in gebruikt and _geslacht_compatibel(t, k)
+            k for k in pool[i+1:]
+            if k not in gebruikt
+            and _geslacht_compatibel(t, k)
+            and frozenset((t.naam, k.naam)) not in al_gespeeld
         ]
 
         kandidaten.sort(
@@ -642,12 +779,16 @@ def on_add_preference(*args):
         set_status(f"Preference error: {exc}", "error")
 
 
+
 def on_teams_json_changed(*args):
     try:
         populate_preference_dropdowns()
         render_preferences_editor()
+        render_teams_editor()  # <-- NEW
     except Exception:
         populate_preference_dropdowns()
+        render_teams_editor()  # <-- NEW (still show teams list)
+
 
 
 def on_prefs_json_changed(*args):
@@ -1081,6 +1222,150 @@ def _build_excel_preferences_rows() -> list[list]:
     return rows
 
 
+def _try_generate_with_retries(
+    teams,
+    prefs,
+    n_rondes,
+    n_velden,
+    seed,
+    max_tries: int = 100,
+    prefer_seed: Optional[int] = None,
+):
+    """Attempt to generate a feasible schedule with up to max_tries random seeds.
+    If prefer_seed is provided, try that seed first. Returns:
+    (success, wedstrijden, rest_verplicht, rest_opt, used_seed).
+    """
+    def _single_try(the_seed: int):
+        wedstrijden, rest_verplicht, rest_opt = genereer_schema(
+            teams=teams,
+            voorkeuren=prefs,
+            n_rondes=n_rondes,
+            n_velden=n_velden,
+            seed=the_seed,
+        )
+        ok = not any(rest_verplicht.values())
+        return ok, wedstrijden, rest_verplicht, rest_opt
+
+    # Try the preferred seed (e.g., cached seed) first if provided
+    if prefer_seed is not None:
+        ok, w, rv, ro = _single_try(prefer_seed)
+        if ok:
+            return True, w, rv, ro, prefer_seed
+        # one attempt consumed
+        tries_left = max(0, max_tries - 1)
+    else:
+        tries_left = max_tries
+
+    # Then try the provided seed, then random seeds
+    rnd = seed
+    last_w, last_rv, last_ro = [], {}, {}
+    for _ in range(tries_left):
+        ok, w, rv, ro = _single_try(rnd)
+        last_w, last_rv, last_ro = w, rv, ro
+        if ok:
+            return True, w, rv, ro, rnd
+        rnd = random.randint(1, 1000)
+
+    return False, last_w, last_rv, last_ro, rnd
+
+def _clone_team_like(name_suffix: int, base_team: Team) -> Team:
+    """Create a new Team object with the same profile but unique name."""
+    return Team(
+        niveau=base_team.niveau,
+        geslacht=base_team.geslacht,
+        naam=f"{base_team.naam} (nieuw {name_suffix})",
+        leeftijd=base_team.leeftijd,
+    )
+
+def _max_extra_for_profile(base_teams: List[Team], prefs, n_rondes, n_velden, seed, prototype_team: Team) -> int:
+    """Find the maximum K extra teams matching 'prototype_team' that still yields a feasible schedule.
+       Uses exponential probing to find an upper bound, then binary search."""
+    def feasible(k: int) -> bool:
+        extra = [_clone_team_like(i + 1, prototype_team) for i in range(k)]
+        ok, *_ = _try_generate_with_retries(
+            base_teams + extra, prefs, n_rondes, n_velden, seed, max_tries=100
+        )
+        return ok
+
+    # Quick rejection
+    if not feasible(1):
+        return 0
+
+    # Exponential growth to find an upper bound
+    lo, hi = 1, 1
+    while feasible(hi):
+        hi *= 2
+        if hi > 256:  # safety cap to avoid very long runs
+            break
+
+    # Binary search in (lo, hi]
+    while lo + 1 < hi:
+        mid = (lo + hi) // 2
+        if feasible(mid):
+            lo = mid
+        else:
+            hi = mid
+    return lo
+
+def _group_prototypes(teams: List[Team]) -> List[Team]:
+    """Return one representative team per (niveau, geslacht, leeftijd) profile present."""
+    seen = {}
+    for t in teams:
+        key = (t.niveau, t.geslacht, t.leeftijd)
+        if key not in seen:
+            seen[key] = t
+    return list(seen.values())
+
+def on_capacity(*args):
+    """UI handler: compute how many more teams can be accepted overall and per segment."""
+    try:
+        teams, prefs, n_rondes, n_velden, seed = read_inputs()
+        if not teams:
+            set_status("Geen teams geladen.", "error")
+            return
+
+        prototypes = _group_prototypes(teams)
+
+        per_segment = []
+        total_extra = 0
+        for proto in prototypes:
+            k = _max_extra_for_profile(teams, prefs, n_rondes, n_velden, seed, proto)
+            per_segment.append((proto.niveau, proto.geslacht, proto.leeftijd, k))
+            total_extra += k
+
+        # Render into capacity-summary if present; else show in status only
+        rows = []
+        for (niveau, geslacht, leeftijd, k) in sorted(per_segment):
+            rows.append(
+                f"<tr><td>Niveau {niveau}</td><td>{geslacht}</td><td>{leeftijd}</td><td><strong>+{k}</strong></td></tr>"
+            )
+
+        target = document.getElementById("capacity-summary")
+        if target is not None:
+            target.innerHTML = f"""
+            <div class="summary-list">
+              <div class="summary-item">
+                <span class="muted">Extra teams (totaal)</span>
+                <strong>+{total_extra}</strong>
+              </div>
+            </div>
+            <div class="round-block" style="margin-top:12px;">
+              <div class="round-header">Per segment</div>
+              <table class="remaining-table">
+                <thead>
+                  <tr><th>Niveau</th><th>Geslacht</th><th>Leeftijd</th><th>Mogelijk extra</th></tr>
+                </thead>
+                <tbody>{''.join(rows) if rows else '<tr><td colspan="4" class="muted">Geen segmenten gevonden.</td></tr>'}</tbody>
+              </table>
+            </div>
+            """
+        set_status("Capaciteit berekend.", "success")
+
+    except Exception as exc:
+        console.error(str(exc))
+        set_status(f"Error: {exc}", "error")
+
+
 def on_export_excel(*args):
     if LAST_RESULT is None:
         set_status("Genereer eerst een schema voordat je exporteert.", "error")
@@ -1203,7 +1488,6 @@ def on_view_timeline(*args):
 
 def wire_events() -> None:
     global EVENT_PROXIES
-
     EVENT_PROXIES = [
         create_proxy(on_generate),
         create_proxy(on_teams_csv_selected),
@@ -1214,8 +1498,9 @@ def wire_events() -> None:
         create_proxy(on_view_table),
         create_proxy(on_view_timeline),
         create_proxy(on_export_excel),
+        create_proxy(on_capacity),
+        create_proxy(on_add_team),  # <-- NEW
     ]
-
     document.getElementById("generate-btn").addEventListener("click", EVENT_PROXIES[0])
     document.getElementById("teams-csv-file").addEventListener("change", EVENT_PROXIES[1])
     document.getElementById("add-pref-btn").addEventListener("click", EVENT_PROXIES[2])
@@ -1225,6 +1510,8 @@ def wire_events() -> None:
     document.getElementById("view-table-btn").addEventListener("click", EVENT_PROXIES[6])
     document.getElementById("view-timeline-btn").addEventListener("click", EVENT_PROXIES[7])
     document.getElementById("export-excel").addEventListener("click", EVENT_PROXIES[8])
+    document.getElementById("capacity-btn").addEventListener("click", EVENT_PROXIES[9])
+    document.getElementById("add-team-btn").addEventListener("click", EVENT_PROXIES[-1])  # <-- NEW
 
 
 
@@ -1232,3 +1519,4 @@ init_fields()
 wire_events()
 sync_preferences_ui()
 set_output_view("table")
+render_teams_editor()

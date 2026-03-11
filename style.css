@@ -447,3 +447,17 @@ button:hover {
 .small {
   font-size: 0.9rem;
 }
+/* Teams beheren table (optional compact style) */
+.teams-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.teams-table th, .teams-table td {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+.teams-actions {
+  display: flex;
+  gap: 8px;
+}
