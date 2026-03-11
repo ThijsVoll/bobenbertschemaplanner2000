@@ -1138,8 +1138,8 @@ def render_results(results: dict) -> None:
         <strong>{len(rounds)}</strong>
       </div>
       <div class="summary-item">
-        <span class="muted">Ongebruikte slots</span>
-        <strong>{sum(results['remaining_required'].values())}</strong>
+        <span class="muted">Niet ingedeelde wedstrijden (Verplicht/optioneel)</span>
+        <strong>{sum(results['remaining_required'].values())}/{sum(results['remaining_optional'].values())}</strong>
       </div>
     </div>
     """)
