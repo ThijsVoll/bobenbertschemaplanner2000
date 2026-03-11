@@ -67,40 +67,41 @@
 
         <!-- === Teams beheren (inline add/remove) === -->
         <section class="field-block">
-          <span>Teams beheren</span>
+          <h2>Teams beheren</h2>
 
-          <div class="field-row" style="grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
-            <label>
-              <span>Naam</span>
-              <input id="new-team-name" type="text" placeholder="Teamnaam" />
-            </label>
+          <div class="field-row" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 12px; align-items: end;">
+  <label>
+    <span>Naam</span>
+    <input id="new-team-name" type="text" placeholder="Teamnaam" />
+  </label>
 
-            <label>
-              <span>Geslacht</span>
-              <select id="new-team-geslacht">
-                <option value="Mixed">Mixed</option>
-                <option value="Heren">Heren</option>
-                <option value="Dames">Dames</option>
-              </select>
-            </label>
+  <label>
+    <span>Geslacht</span>
+    <select id="new-team-geslacht">
+      <option value="Mixed">Mixed</option>
+      <option value="Heren">Heren</option>
+      <option value="Dames">Dames</option>
+    </select>
+  </label>
 
-            <label>
-              <span>Leeftijd</span>
-              <select id="new-team-leeftijd">
-                <option value="Jong">Jong</option>
-                <option value="Oud">Oud</option>
-              </select>
-            </label>
+  <label>
+    <span>Leeftijd</span>
+    <select id="new-team-leeftijd">
+      <option value="Jong">Jong</option>
+      <option value="Oud">Oud</option>
+    </select>
+  </label>
 
-            <label>
-              <span>Niveau</span>
-              <input id="new-team-niveau" type="number" min="1" value="1" />
-            </label>
-          </div>
+  <label>
+    <span>Niveau</span>
+    <input id="new-team-niveau" type="number" min="1" value="1" />
+  </label>
 
-          <div class="actions-row" style="margin-top: 10px;">
-            <button id="add-team-btn" type="button">➕ Team toevoegen</button>
-          </div>
+  <button id="add-team-btn" type="button" class="secondary">Team toevoegen</button>
+</div>
+
+
+     
 
           <!-- Live list of current teams -->
           <div id="teams-list" class="summary-card" style="margin-top: 12px;"></div>
@@ -112,7 +113,7 @@
         </label>
 
         <section class="field-block">
-          <span>Voorkeur wedstrijden</span>
+          <h2>Voorkeur wedstrijden</h2>
           <div class="pref-row">
             <label class="pref-select-wrap">
               <span>Team A</span>
@@ -127,7 +128,6 @@
             </button>
           </div>
           <div id="prefs-editor-empty" class="muted small" style="margin-top: 8px;">
-            Eerst teams importeren.
           </div>
           <div id="prefs-list" style="display: grid; gap: 8px; margin-top: 12px;"></div>
         </section>
