@@ -37,25 +37,9 @@ REMOVE_TEAM_PROXIES = []  # keep references to delete-button handlers (avoid GC)
 
 
 EXAMPLE_TEAMS = [
-    {"niveau": 1, "geslacht": "Heren", "naam": "Falcons", "leeftijd": "Jong"},
-    {"niveau": 1, "geslacht": "Heren", "naam": "Wolves", "leeftijd": "Midden"},
-    {"niveau": 1, "geslacht": "Heren", "naam": "Raptors", "leeftijd": "Oud"},
-    {"niveau": 1, "geslacht": "Heren", "naam": "Lions", "leeftijd": "Jong"},
-    {"niveau": 2, "geslacht": "Dames", "naam": "Orcas", "leeftijd": "Midden"},
-    {"niveau": 2, "geslacht": "Dames", "naam": "Sharks", "leeftijd": "Jong"},
-    {"niveau": 2, "geslacht": "Dames", "naam": "Otters", "leeftijd": "Oud"},
-    {"niveau": 2, "geslacht": "Dames", "naam": "Seals", "leeftijd": "Midden"},
-    {"niveau": 3, "geslacht": "Mixed", "naam": "Comets", "leeftijd": "Jong"},
-    {"niveau": 3, "geslacht": "Mixed", "naam": "Nebula", "leeftijd": "Midden"},
-    {"niveau": 3, "geslacht": "Mixed", "naam": "Meteors", "leeftijd": "Oud"},
-    {"niveau": 3, "geslacht": "Mixed", "naam": "Aurora", "leeftijd": "Midden"},
 ]
 
 EXAMPLE_PREFS = [
-    ["Falcons", "Wolves"],
-    ["Orcas", "Sharks"],
-    ["Comets", "Aurora"],
-    ["Raptors", "Lions"],
 ]
 
 LAST_RESULT = None
@@ -183,7 +167,7 @@ def on_add_team(*args):
         document.getElementById("new-team-name").value = ""
         document.getElementById("new-team-niveau").value = "1"
         document.getElementById("new-team-geslacht").value = "Mixed"
-        document.getElementById("new-team-leeftijd").value = "Midden"
+        document.getElementById("new-team-leeftijd").value = "Jong"
 
         # Keep the rest of the UI in sync (your existing helper) and re-render this table. [2](https://singlebuoy-my.sharepoint.com/personal/thijs_vollebregt_sbmoffshore_com/Documents/Microsoft%20Copilot%20Chat%20Files/app.py)
         sync_preferences_ui()
@@ -732,6 +716,7 @@ async def import_csv_async() -> None:
             teams, indent=2, ensure_ascii=False
         )
         sync_preferences_ui()
+        render_teams_editor()
         set_status(f"{len(teams)} teams geimporteerd van {file.name}.", "success")
     except Exception as exc:
         console.error(str(exc))
@@ -866,6 +851,34 @@ def set_output_view(view: str) -> None:
         timeline_btn.classList.remove("is-active")
         table_btn.classList.add("is-active")
 
+def clear_output_sections() -> None:
+    document.getElementById("schedule-output").innerHTML = ""
+    document.getElementById("timeline-output").innerHTML = ""
+    document.getElementById("remaining-output").innerHTML = ""
+
+
+def show_primary_summary(html_content: str) -> None:
+    summary_el = document.getElementById("summary")
+    capacity_el = document.getElementById("capacity-summary")
+
+    summary_el.innerHTML = html_content
+    summary_el.classList.remove("hidden")
+
+    # keep the old capacity box hidden/empty so nothing stacks
+    capacity_el.innerHTML = ""
+    capacity_el.classList.add("hidden")
+
+
+def clear_primary_summary() -> None:
+    summary_el = document.getElementById("summary")
+    summary_el.innerHTML = ""
+    summary_el.classList.add("hidden")
+
+
+def clear_capacity_summary() -> None:
+    capacity_el = document.getElementById("capacity-summary")
+    capacity_el.innerHTML = ""
+    capacity_el.classList.add("hidden")
 
 def render_table_schedule(results: dict) -> None:
     output_el = document.getElementById("schedule-output")
@@ -1037,13 +1050,11 @@ def render_team_timeline(results: dict) -> None:
 
 
 def render_results(results: dict) -> None:
-    summary_el = document.getElementById("summary")
     remaining_el = document.getElementById("remaining-output")
-
     matches = results["matches"]
     rounds = sorted({m["ronde"] for m in matches})
 
-    summary_el.innerHTML = f"""
+    show_primary_summary(f"""
     <div class="summary-list">
       <div class="summary-item">
         <span class="muted">Aantal wedstrijden</span>
@@ -1058,7 +1069,7 @@ def render_results(results: dict) -> None:
         <strong>{sum(results['remaining_required'].values())}</strong>
       </div>
     </div>
-    """
+    """)
 
     render_table_schedule(results)
     render_team_timeline(results)
@@ -1090,6 +1101,7 @@ def render_results(results: dict) -> None:
     """
 
     set_output_view(OUTPUT_VIEW)
+
 
 def _build_excel_overview_rows(results: dict) -> list[list]:
     matches = results.get("matches", [])
@@ -1325,42 +1337,44 @@ def on_capacity(*args):
             return
 
         prototypes = _group_prototypes(teams)
-
         per_segment = []
         total_extra = 0
+
         for proto in prototypes:
             k = _max_extra_for_profile(teams, prefs, n_rondes, n_velden, seed, proto)
             per_segment.append((proto.niveau, proto.geslacht, proto.leeftijd, k))
             total_extra += k
 
-        # Render into capacity-summary if present; else show in status only
         rows = []
         for (niveau, geslacht, leeftijd, k) in sorted(per_segment):
             rows.append(
                 f"<tr><td>Niveau {niveau}</td><td>{geslacht}</td><td>{leeftijd}</td><td><strong>+{k}</strong></td></tr>"
             )
 
-        target = document.getElementById("capacity-summary")
-        if target is not None:
-            target.innerHTML = f"""
-            <div class="summary-list">
-              <div class="summary-item">
-                <span class="muted">Extra teams (totaal)</span>
-                <strong>+{total_extra}</strong>
-              </div>
-            </div>
-            <div class="round-block" style="margin-top:12px;">
-              <div class="round-header">Per segment</div>
-              <table class="remaining-table">
-                <thead>
-                  <tr><th>Niveau</th><th>Geslacht</th><th>Leeftijd</th><th>Mogelijk extra</th></tr>
-                </thead>
-                <tbody>{''.join(rows) if rows else '<tr><td colspan="4" class="muted">Geen segmenten gevonden.</td></tr>'}</tbody>
-              </table>
-            </div>
-            """
-        set_status("Capaciteit berekend.", "success")
+        show_primary_summary(f"""
+        <div class="summary-list">
+          <div class="summary-item">
+            <span class="muted">Extra teams (totaal)</span>
+            <strong>+{total_extra}</strong>
+          </div>
+        </div>
+        <div class="round-block" style="margin-top:12px;">
+          <div class="round-header">Per segment</div>
+          <table class="remaining-table">
+            <thead>
+              <tr><th>Niveau</th><th>Geslacht</th><th>Leeftijd</th><th>Mogelijk extra</th></tr>
+            </thead>
+            <tbody>
+              {''.join(rows) if rows else '<tr><td colspan="4" class="muted">Geen segmenten gevonden.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+        """)
 
+        # remove previous schedule/timeline/remaining output
+        clear_output_sections()
+
+        set_status("Capaciteit berekend.", "success")
     except Exception as exc:
         console.error(str(exc))
         set_status(f"Error: {exc}", "error")

@@ -461,3 +461,50 @@ button:hover {
   display: flex;
   gap: 8px;
 }
+#teams-list {
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+  position: relative;
+  border-radius: 18px;
+  background: var(--panel-2);
+  padding: 0;
+}
+
+/* Make the table behave nicely with sticky headers */
+#teams-list .teams-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* Sticky header row */
+#teams-list thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: linear-gradient(
+    180deg,
+    rgba(24, 34, 66, 0.98),
+    rgba(18, 25, 51, 0.96)
+  );
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+/* Nice rounded top corners for the sticky header */
+#teams-list thead th:first-child {
+  border-top-left-radius: 14px;
+}
+
+#teams-list thead th:last-child {
+  border-top-right-radius: 14px;
+}
+
+/* Prevent the first data row from doubling the line directly under header */
+#teams-list tbody tr:first-child td {
+  border-top: none;
+}
