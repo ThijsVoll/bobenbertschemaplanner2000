@@ -329,6 +329,303 @@ def _pareer_gretig(
 
     return paren
 
+# --- NEW: controlled randomness version of the greedy matcher ---
+def _pareer_gretig_randomized(
+    beschikbaar: List[Team],
+    al_gespeeld: Set[frozenset],
+    ronde: int,
+    rng: random.Random,
+    top_k: int = 3,
+) -> List[Tuple[Team, Team]]:
+    """
+    Like _pareer_gretig but with randomized tie-breaking:
+    - Randomly permutes the pool a bit.
+    - For each team, pick randomly among the top_k best candidates.
+    Returns a fast greedy set of pairs (no backtracking), primarily used inside the
+    backtracking solver to seed or speed up decisions.
+    """
+    paren: List[Tuple[Team, Team]] = []
+    pool = beschikbaar[:]
+    # slight randomization of the order (stable-ish but not fixed)
+    rng.shuffle(pool)
+
+    gebruikt: Set[Team] = set()
+    for i, t in enumerate(pool):
+        if t in gebruikt:
+            continue
+        kandidaten = [
+            k for k in pool[i+1:]
+            if k not in gebruikt
+            and _geslacht_compatibel(t, k)
+            and frozenset((t.naam, k.naam)) not in al_gespeeld
+        ]
+        # rank by quality (lower is better), but then sample among top_k
+        kandidaten.sort(
+            key=lambda k: (
+                (frozenset((t.naam, k.naam)) in al_gespeeld),
+                -_compatibiliteit_score(t, k),
+                k.naam,
+            )
+        )
+        if not kandidaten:
+            continue
+        pick_from = kandidaten[: min(top_k, len(kandidaten))]
+        k = rng.choice(pick_from)
+        paren.append((t, k))
+        gebruikt.add(t)
+        gebruikt.add(k)
+    return paren
+
+
+# --- NEW: quick lower-bound feasibility test (forward checking) ---
+def _available_rounds_for_team(
+    t: Team,
+    ronde_now: int,
+    n_rondes: int,
+    laatste_ronde: Dict[Team, Optional[int]],
+) -> int:
+    """How many future rounds (including the current ronde_now) are still usable for team t?"""
+    cnt = 0
+    prev = laatste_ronde.get(t)
+    for r in range(ronde_now, n_rondes + 1):
+        if _consecutieve_rondes_toegestaan(prev, r):
+            cnt += 1
+        # if we hypothetically schedule at r, consecutive with r+1 would be disallowed,
+        # but counting simple availability is still a helpful lower-bound.
+    return cnt
+
+def _feasible_lower_bound(
+    teams: List[Team],
+    ronde_now: int,
+    n_rondes: int,
+    resterend_verplicht: Dict[Team, int],
+    laatste_ronde: Dict[Team, Optional[int]],
+) -> bool:
+    """
+    For every team, ensure remaining required slots do not exceed the number
+    of rounds in which it can still legally play (respecting consecutive-round rule).
+    """
+    for t in teams:
+        need = resterend_verplicht[t]
+        if need <= 0:
+            continue
+        avail = _available_rounds_for_team(t, ronde_now, n_rondes, laatste_ronde)
+        if need > avail:
+            return False
+    return True
+
+
+# --- NEW: bounded backtracking scheduler ---
+def genereer_schema_backtracking(
+    teams: List[Team],
+    voorkeuren: List[Tuple[str, str]],
+    n_rondes: int = 7,
+    n_velden: int = 12,
+    seed: Optional[int] = 42,
+    time_limit_nodes: int = 20000,
+    top_k_random: int = 3,
+) -> Tuple[List[Match], Dict[str, int], Dict[str, int]]:
+    """
+    Backtracking + forward-checking search.
+    - Tries to schedule across rounds/fields with feasibility pruning.
+    - Randomizes candidate order slightly to avoid repeated dead-ends.
+    - Stops when all REQUIRED matches are placed or when node budget is exhausted.
+    Returns the (matches, remaining_required_by_name, remaining_optional_by_name).
+    """
+    rng = random.Random(seed)
+
+    naam2team = _naam_index(teams)
+    resterend_verplicht: Dict[Team, int] = {t: VERPLICHTE_WEDSTRIJDEN.get(t.niveau, 0) for t in teams}
+    resterend_opt: Dict[Team, int] = {t: OPTIONELE_WEDSTRIJDEN.get(t.niveau, 0) for t in teams}
+    laatste_ronde: Dict[Team, Optional[int]] = {t: None for t in teams}
+
+    voorkeur_set: Set[frozenset] = set()
+    for a, b in voorkeuren:
+        if a in naam2team and b in naam2team and a != b:
+            voorkeur_set.add(frozenset((a, b)))
+
+    ongeplande_voorkeuren = set(voorkeur_set)
+    voorkeur_lijst = list(voorkeur_set)
+    rng.shuffle(voorkeur_lijst)
+
+    # distribute preferences like before: a target round per pair
+    voorkeur_doelronde: Dict[frozenset, int] = {}
+    for i, pair in enumerate(voorkeur_lijst):
+        voorkeur_doelronde[pair] = (i % n_rondes) + 1
+
+    al_gespeeld: Set[frozenset] = set()
+    wedstrijden: List[Match] = []
+    nodes = 0
+
+    # Pre-check: if already impossible, quit fast
+    if not _feasible_lower_bound(teams, 1, n_rondes, resterend_verplicht, laatste_ronde):
+        # fall back: nothing scheduled
+        return [], {t.naam: resterend_verplicht[t] for t in teams}, {t.naam: resterend_opt[t] for t in teams}
+
+    def candidates_for_round(
+        ronde: int,
+        geplande_deze_ronde: Set[Team],
+        geplande_pref_cnt: int,
+        pref_quota: int,
+    ) -> List[Tuple[Team, Team, bool, int]]:
+        """
+        Build candidate pairs for this round.
+        Returns list of tuples: (a, b, is_preference, priority_score)
+        Higher priority_score means try earlier.
+        """
+        # Determine which teams can play this round and still need required/optional
+        beschikbaar: List[Team] = []
+        for t in teams:
+            if t in geplande_deze_ronde:
+                continue
+            if not _consecutieve_rondes_toegestaan(laatste_ronde[t], ronde):
+                continue
+            if resterend_verplicht[t] > 0 or resterend_opt[t] > 0:
+                beschikbaar.append(t)
+
+        # quick greedy to partition into feasible team pairs
+        base_pairs: List[Tuple[Team, Team]] = []
+        # Use the randomized greedy just to propose a near-maximal set (we'll still backtrack)
+        seed_pairs = _pareer_gretig_randomized(beschikbaar, al_gespeeld, ronde, rng, top_k=top_k_random)
+        # Expand by enumerating remaining potential pairs to widen search
+        seen = set(frozenset((a.naam, b.naam)) for a, b in seed_pairs)
+        base_pairs.extend(seed_pairs)
+
+        leftover = [t for t in beschikbaar]
+        # Enumerate additional pairs not in seed list (bounded sampling)
+        for i, a in enumerate(leftover):
+            for b in leftover[i+1:]:
+                fs = frozenset((a.naam, b.naam))
+                if fs in seen:
+                    continue
+                if fs in al_gespeeld:
+                    continue
+                if not _geslacht_compatibel(a, b):
+                    continue
+                base_pairs.append((a, b))
+                seen.add(fs)
+
+        cand: List[Tuple[Team, Team, bool, int]] = []
+        for a, b in base_pairs:
+            is_pref = frozenset((a.naam, b.naam)) in voorkeur_set
+            # Respect per-round preference quota
+            if is_pref and geplande_pref_cnt >= pref_quota:
+                continue
+
+            # If both teams have zero remaining (shouldn't be in beschikbaar then), skip
+            if resterend_verplicht[a] == 0 and resterend_opt[a] == 0:
+                continue
+            if resterend_verplicht[b] == 0 and resterend_opt[b] == 0:
+                continue
+
+            # Priority heuristic:
+            #  - Prefer preference pairs
+            #  - Prefer higher combined required need
+            #  - Then higher compatibility
+            priority = (
+                (1 if is_pref else 0) * 1_000_000
+                + (resterend_verplicht[a] + resterend_verplicht[b]) * 10_000
+                + _compatibiliteit_score(a, b)
+            )
+            cand.append((a, b, is_pref, priority))
+
+        # Sort by priority, then apply slight randomization among ties
+        cand.sort(key=lambda t: (-t[3], t[0].naam, t[1].naam))
+        # Randomize within small windows to avoid determinism
+        i = 0
+        window = max(2, min(6, top_k_random + 2))
+        out: List[Tuple[Team, Team, bool, int]] = []
+        while i < len(cand):
+            j = min(i + window, len(cand))
+            block = cand[i:j]
+            rng.shuffle(block)
+            out.extend(block)
+            i = j
+        return out
+
+    def recurse(ronde: int, veld_idx: int, geplande_deze_ronde: Set[Team], geplande_pref_cnt: int) -> bool:
+        nonlocal nodes, wedstrijden
+
+        nodes += 1
+        if nodes > time_limit_nodes:
+            return False
+
+        # If all required matches satisfied, success
+        if all(resterend_verplicht[t] == 0 for t in teams):
+            return True
+
+        # If we finished all rounds, stop
+        if ronde > n_rondes:
+            return False
+
+        # Compute remaining rounds and preference quota like the greedy version
+        resterende_rondes = n_rondes - ronde + 1
+        resterende_voorkeuren = len(ongeplande_voorkeuren)
+        pref_quota = min(
+            n_velden,
+            math.ceil(resterende_voorkeuren / resterende_rondes) if resterende_voorkeuren > 0 else 0,
+        )
+
+        # If fields left in this round, try to place a pair
+        if veld_idx <= n_velden:
+            # Generate candidates
+            for a, b, is_pref, _priority in candidates_for_round(ronde, geplande_deze_ronde, geplande_pref_cnt, pref_quota):
+                # Commit (place a match)
+                wedstrijden.append(Match(ronde, veld_idx, a, b))
+                prev_la = laatste_ronde[a]; prev_lb = laatste_ronde[b]
+                laatste_ronde[a] = ronde; laatste_ronde[b] = ronde
+                fs = frozenset((a.naam, b.naam))
+                was_pref_unplanned = False
+                if fs in ongeplande_voorkeuren and is_pref:
+                    ongeplande_voorkeuren.remove(fs)
+                    was_pref_unplanned = True
+
+                # Update counters
+                ra0, rb0 = resterend_verplicht[a], resterend_verplicht[b]
+                ro0a, ro0b = resterend_opt[a], resterend_opt[b]
+                if resterend_verplicht[a] > 0:
+                    resterend_verplicht[a] -= 1
+                elif resterend_opt[a] > 0:
+                    resterend_opt[a] -= 1
+                if resterend_verplicht[b] > 0:
+                    resterend_verplicht[b] -= 1
+                elif resterend_opt[b] > 0:
+                    resterend_opt[b] -= 1
+
+                al_gespeeld.add(fs)
+                geplande_deze_ronde.update([a, b])
+
+                # Forward-check feasibility before deeper recursion
+                ok = _feasible_lower_bound(teams, ronde, n_rondes, resterend_verplicht, laatste_ronde)
+                if ok and recurse(
+                    ronde, veld_idx + 1, geplande_deze_ronde, geplande_pref_cnt + (1 if is_pref else 0)
+                ):
+                    return True
+
+                # Undo (backtrack)
+                if was_pref_unplanned:
+                    ongeplande_voorkeuren.add(fs)
+                wedstrijden.pop()
+                laatste_ronde[a] = prev_la; laatste_ronde[b] = prev_lb
+                resterend_verplicht[a] = ra0; resterend_verplicht[b] = rb0
+                resterend_opt[a] = ro0a; resterend_opt[b] = ro0b
+                al_gespeeld.discard(fs)
+                geplande_deze_ronde.discard(a); geplande_deze_ronde.discard(b)
+
+        # Branch: close this round early and move to next
+        # (sometimes leaving fields empty this round enables feasibility later)
+        if _feasible_lower_bound(teams, ronde + 1, n_rondes, resterend_verplicht, laatste_ronde):
+            if recurse(ronde + 1, 1, set(), 0):
+                return True
+
+        return False
+
+    # Start recursion
+    ok = recurse(1, 1, set(), 0)
+
+    rest_verplicht_by_name = {t.naam: resterend_verplicht[t] for t in teams}
+    rest_opt_by_name = {t.naam: resterend_opt[t] for t in teams}
+    return (wedstrijden if ok else wedstrijden, rest_verplicht_by_name, rest_opt_by_name)
 
 def genereer_schema(
     teams: List[Team],
@@ -1486,32 +1783,38 @@ def on_generate(*args):
     try:
         teams, prefs, n_rondes, n_velden, seed = read_inputs()
 
-        success = False
-        wedstrijden = []
-        rest_verplicht = {}
-        rest_opt = {}
+        # 1) Try fast greedy with multiple seeds (uses your existing function)
+        ok, wedstrijden, rest_verplicht, rest_opt, used_seed = _try_generate_with_retries(
+            teams, prefs, n_rondes, n_velden, seed, max_tries=50, prefer_seed=seed
+        )
 
-        for _ in range(1000):
-            wedstrijden, rest_verplicht, rest_opt = genereer_schema(
+        # 2) If greedy failed, attempt bounded backtracking with a node budget
+        used_seed = used_seed or seed
+        if not ok:
+            set_status("Greedy faalde; probeer backtracking…", "info")
+            wedstrijden, rest_verplicht, rest_opt = genereer_schema_backtracking(
                 teams=teams,
                 voorkeuren=prefs,
                 n_rondes=n_rondes,
                 n_velden=n_velden,
-                seed=seed,
+                seed=used_seed,
+                time_limit_nodes=20000,   # tune: more nodes = deeper search
+                top_k_random=3,           # tune: more randomness in local choices
             )
-            if not any(rest_verplicht.values()):
-                success = True
-                break
-            seed = random.randint(1, 1000)
-            document.getElementById("seed").value = str(seed)
+            ok = not any(rest_verplicht.values())
 
+        # 3) Present results
         LAST_RESULT = serialize_results(teams, wedstrijden, rest_verplicht, rest_opt, n_rondes)
         render_results(LAST_RESULT)
-
-        if success:
+        if ok:
             set_status(f"Succesvol {len(wedstrijden)} wedstrijden gegenereerd.", "success")
         else:
-            set_status("Combinatie niet mogelijk.", "error")
+            set_status("Combinatie niet mogelijk (node-/tijdlimiet bereikt).", "error")
+
+        # Keep the seed field visible/up-to-date
+        if used_seed is not None:
+            document.getElementById("seed").value = str(used_seed)
+
     except Exception as exc:
         console.error(str(exc))
         set_status(f"Error: {exc}", "error")
