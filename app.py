@@ -278,8 +278,9 @@ def _consecutieve_rondes_toegestaan(vorige: Optional[int], huidige: int) -> bool
 
 
 def _geslacht_compatibel(a: Team, b: Team) -> bool:
-    if a.geslacht == "Mixed" or b.geslacht == "Mixed":
-        return True
+
+    #if a.geslacht == "Mixed" or b.geslacht == "Mixed":
+    #    return True
     return a.geslacht == b.geslacht
 
 
