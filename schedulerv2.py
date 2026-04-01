@@ -33,6 +33,8 @@ class TournamentScheduler:
     """
 
     def __init__(self, teams: List[Team], preferences: List[Tuple[str, str]], seed: Optional[int] = 42):
+
+        random.shuffle(teams)
         self.teams: Dict[str, InternalTeam] = {
             self._team_name(t): InternalTeam(
                 name=self._team_name(t),
@@ -44,12 +46,8 @@ class TournamentScheduler:
             for t in teams
         }
 
-        preferences = [frozenset((a, b)) for a, b in preferences if a in self.teams and b in self.teams]
-        if preferences:
-            self.preferences = preferences
-
-        else:
-            self.preferences = set()
+        self.preferences = [frozenset((a, b)) for a, b in preferences if a in self.teams and b in self.teams]
+        random.shuffle(self.preferences)
 
         # Output metrics mimicking original class
         self.last_node_visits = 0
@@ -206,7 +204,6 @@ class TournamentScheduler:
         used_pairings: List[Tuple] = []
 
         for round_number in range(1, num_rounds + 1):
-            print(used_pairings)
             used = set()
 
             # (1) Preference matches first
