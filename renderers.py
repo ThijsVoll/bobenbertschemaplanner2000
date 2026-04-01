@@ -73,9 +73,9 @@ class TeamsRenderer:
         teams_sorted = sorted(
             teams,
             key=lambda team: (
-                int(team.get("niveau", 0)),
-                str(team.get("geslacht", "")),
-                str(team.get("naam", "")),
+                int(team.get("level", 0)),
+                str(team.get("gender", "")),
+                str(team.get("name", "")),
             ),
         )
         filter_value = html.escape(self.state.team_name_filter, quote=True)
@@ -93,26 +93,29 @@ class TeamsRenderer:
                 '<button type="button" class="teams-filter-trigger" '
                 'id="team-name-filter-toggle">Naam</button>'
                 f'<input id="team-name-filter-input" class="{input_class}" '
-                f'type="text" placeholder="Filter op naam..." value="{filter_value}" />'
+                f'type="text" placeholder="Filter op name..." value="{filter_value}" />'
                 '</th>'
             ),
             '<th>Geslacht</th>',
             '<th>Leeftijd</th>',
             '<th>Niveau</th>',
+            '<th>Wedstrijden</th>',
             '<th></th>',
             '</tr></thead><tbody>',
         ]
         for index, team in enumerate(teams_sorted):
-            naam = html.escape(str(team.get("naam", "")))
-            geslacht = html.escape(str(team.get("geslacht", "")))
-            leeftijd = html.escape(str(team.get("leeftijd", "")))
-            niveau = int(team.get("niveau", 0))
+            name = html.escape(str(team.get("name", "")))
+            gender = html.escape(str(team.get("gender", "")))
+            age = html.escape(str(team.get("age", "")))
+            level = int(team.get("level", 0))
+            wedstrijden = int(team.get("wedstrijden", 0))
             html_parts.append(
-                f'<tr id="team-row-{index}" data-team-name="{naam.lower()}">'
-                f'<td>{naam}</td>'
-                f'<td>{geslacht}</td>'
-                f'<td>{leeftijd}</td>'
-                f'<td>{niveau}</td>'
+                f'<tr id="team-row-{index}" data-team-name="{name.lower()}">'
+                f'<td>{name}</td>'
+                f'<td>{gender}</td>'
+                f'<td>{age}</td>'
+                f'<td>{level}</td>'
+                f'<td>{wedstrijden}</td>'
                 f'<td><button type="button" class="secondary" id="del-team-{index}">'
                 'Verwijderen</button></td>'
                 '</tr>'
@@ -120,13 +123,13 @@ class TeamsRenderer:
         html_parts.append('</tbody></table>')
         container.innerHTML = ''.join(html_parts)
 
-        for index, team_name in enumerate(str(team.get("naam", "")) for team in teams_sorted):
+        for index, team_name in enumerate(str(team.get("name", "")) for team in teams_sorted):
             def make_delete_handler(name: str):
                 def handler(event=None):
                     try:
                         current = InputRepository.get_team_dicts()
                         new_list = [
-                            item for item in current if str(item.get("naam", "")) != name
+                            item for item in current if str(item.get("name", "")) != name
                         ]
                         if len(new_list) == len(current):
                             self.set_status(f"Team '{name}' niet gevonden.", "error")
@@ -312,13 +315,13 @@ class ResultsRenderer:
                     f"""
                     <tr>
                       <td>{match['veld']:02d}</td>
-                      <td><strong>{html.escape(match['team_a']['naam'])}</strong><br>
-                          <span class="muted small">{html.escape(match['team_a']['geslacht'])} ·
-                          {html.escape(match['team_a']['leeftijd'])} · Niveau {match['team_a']['niveau']}</span>
+                      <td><strong>{html.escape(match['team_a']['name'])}</strong><br>
+                          <span class="muted small">{html.escape(match['team_a']['gender'])} ·
+                          {html.escape(match['team_a']['age'])} · Niveau {match['team_a']['level']}</span>
                       </td>
-                      <td><strong>{html.escape(match['team_b']['naam'])}</strong><br>
-                          <span class="muted small">{html.escape(match['team_b']['geslacht'])} ·
-                          {html.escape(match['team_b']['leeftijd'])} · Niveau {match['team_b']['niveau']}</span>
+                      <td><strong>{html.escape(match['team_b']['name'])}</strong><br>
+                          <span class="muted small">{html.escape(match['team_b']['gender'])} ·
+                          {html.escape(match['team_b']['age'])} · Niveau {match['team_b']['level']}</span>
                       </td>
                     </tr>
                     """
@@ -347,19 +350,19 @@ class ResultsRenderer:
             veld = int(match["veld"])
             team_a = match["team_a"]
             team_b = match["team_b"]
-            timeline_lookup[team_a["naam"]][ronde] = {
-                "opponent": team_b["naam"],
+            timeline_lookup[team_a["name"]][ronde] = {
+                "opponent": team_b["name"],
                 "veld": veld,
-                "opponent_geslacht": team_b["geslacht"],
-                "opponent_leeftijd": team_b["leeftijd"],
-                "opponent_niveau": team_b["niveau"],
+                "opponent_gender": team_b["gender"],
+                "opponent_age": team_b["age"],
+                "opponent_level": team_b["level"],
             }
-            timeline_lookup[team_b["naam"]][ronde] = {
-                "opponent": team_a["naam"],
+            timeline_lookup[team_b["name"]][ronde] = {
+                "opponent": team_a["name"],
                 "veld": veld,
-                "opponent_geslacht": team_a["geslacht"],
-                "opponent_leeftijd": team_a["leeftijd"],
-                "opponent_niveau": team_a["niveau"],
+                "opponent_gender": team_a["gender"],
+                "opponent_age": team_a["age"],
+                "opponent_level": team_a["level"],
             }
         if not teams:
             timeline_element.innerHTML = '<p class="muted">Geen teamdata beschikbaar.</p>'
@@ -373,16 +376,16 @@ class ResultsRenderer:
         sorted_teams = sorted(
             teams,
             key=lambda team: (
-                int(team.get("niveau", 0)),
-                str(team.get("geslacht", "")),
-                str(team.get("naam", "")),
+                int(team.get("level", 0)),
+                str(team.get("gender", "")),
+                str(team.get("name", "")),
             ),
         )
         for team in sorted_teams:
-            team_name = str(team["naam"])
-            team_niveau = int(team["niveau"])
-            team_geslacht = str(team["geslacht"])
-            team_leeftijd = str(team["leeftijd"])
+            team_name = str(team["name"])
+            team_level = int(team["level"])
+            team_gender = str(team["gender"])
+            team_age = str(team["age"])
             cells: list[str] = []
             for ronde in range(1, n_rondes + 1):
                 slot = timeline_lookup.get(team_name, {}).get(ronde)
@@ -390,11 +393,11 @@ class ResultsRenderer:
                     cells.append(
                         f"""
                         <td class="timeline-slot">
-                          <div class="timeline-match level-{team_niveau}">
+                          <div class="timeline-match level-{team_level}">
                             <div class="timeline-opponent">{html.escape(slot['opponent'])}</div>
                             <span class="timeline-subline">Veld {slot['veld']:02d}</span>
-                            <span class="timeline-subline">{html.escape(slot['opponent_geslacht'])} ·
-                            {html.escape(slot['opponent_leeftijd'])} · Niveau {slot['opponent_niveau']}</span>
+                            <span class="timeline-subline">{html.escape(slot['opponent_gender'])} ·
+                            {html.escape(slot['opponent_age'])} · Niveau {slot['opponent_level']}</span>
                           </div>
                         </td>
                         """
@@ -406,8 +409,8 @@ class ResultsRenderer:
                 <tr>
                   <td class="timeline-team-cell">
                     <div class="timeline-team-name">{html.escape(team_name)}</div>
-                    <span class="timeline-team-meta">{html.escape(team_geslacht)} ·
-                    {html.escape(team_leeftijd)} · Niveau {team_niveau}</span>
+                    <span class="timeline-team-meta">{html.escape(team_gender)} ·
+                    {html.escape(team_age)} · Niveau {team_level}</span>
                   </td>
                   {''.join(cells)}
                 </tr>
@@ -437,7 +440,7 @@ class ResultsRenderer:
               <div class="summary-item"><span class="muted">Rondes gebruikt</span>
                 <strong>{len(rounds)}</strong></div>
               <div class="summary-item"><span class="muted">Niet ingedeelde wedstrijden (Verplicht/optioneel)</span>
-                <strong>{sum(results['remaining_required'].values())}/{sum(results['remaining_optional'].values())}</strong>
+                <strong>{sum(results['remaining_required'].values())}</strong>
               </div>
             </div>
             """
@@ -449,7 +452,6 @@ class ResultsRenderer:
             rows.append(
                 f"<tr><td>{html.escape(name)}</td>"
                 f"<td>{results['remaining_required'][name]}</td>"
-                f"<td>{results['remaining_optional'][name]}</td></tr>"
             )
         remaining_element.innerHTML = f"""
         <section class="panel" style="padding:0; margin-top: 16px;">

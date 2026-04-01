@@ -7,6 +7,7 @@
 "./exporters.py" = "./exporters.py"
 "./models.py" = "./models.py"
 "./renderers.py" = "./renderers.py"
+"./schedulerv2.py" = "./schedulerv2.py"
 "./scheduler.py" = "./scheduler.py"
 "./serializers.py" = "./serializers.py"
 "./state.py" = "./state.py"

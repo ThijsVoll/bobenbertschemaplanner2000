@@ -10,7 +10,7 @@ from constants import CAPACITY_SEED_CACHE, EXAMPLE_PREFS, EXAMPLE_TEAMS
 from data_access import InputRepository
 from exporters import ExcelExporter
 from renderers import PreferencesRenderer, ResultsRenderer, TeamsRenderer
-from scheduler import CapacityAnalyzer, TournamentScheduler
+from schedulerv2 import CapacityAnalyzer, TournamentScheduler
 from serializers import serialize_results
 from state import AppState
 
@@ -43,35 +43,43 @@ class AppController:
     def on_add_team(self, *args) -> None:
         try:
             name = get_element("new-team-name").value.strip()
-            geslacht = get_element("new-team-geslacht").value.strip()
-            leeftijd = get_element("new-team-leeftijd").value.strip()
-            niveau_text = get_element("new-team-niveau").value.strip()
+            gender = get_element("new-team-gender").value.strip()
+            age = get_element("new-team-age").value.strip()
+            level_text = get_element("new-team-level").value.strip()
+            wedstrijden_text = get_element("new-team-matches").value.strip()
             if not name:
                 raise ValueError("Naam is verplicht.")
-            if not geslacht:
+            if not gender:
                 raise ValueError("Geslacht is verplicht.")
-            if not leeftijd:
+            if not age:
                 raise ValueError("Leeftijd is verplicht.")
             try:
-                niveau = int(niveau_text)
+                level = int(level_text)
             except Exception as exc:
                 raise ValueError("Niveau moet een geheel getal zijn.") from exc
+            try:
+                wedstrijden = int(wedstrijden_text)
+            except Exception as exc:
+                raise ValueError("wedstijden moet een geheel getal zijn.") from exc
+            
             if name in set(InputRepository.get_team_names()):
-                raise ValueError(f"Teamnaam '{name}' bestaat al. Kies een unieke naam.")
+                raise ValueError(f"Teamname '{name}' bestaat al. Kies een unieke name.")
             current = InputRepository.get_team_dicts()
             current.append(
                 {
-                    "niveau": niveau,
-                    "geslacht": geslacht,
-                    "naam": name,
-                    "leeftijd": leeftijd,
+                    "level": level,
+                    "gender": gender,
+                    "name": name,
+                    "age": age,
+                    "wedstrijden": wedstrijden
                 }
             )
             InputRepository.set_teams_json(current)
             get_element("new-team-name").value = ""
-            get_element("new-team-niveau").value = "1"
-            get_element("new-team-geslacht").value = "Mixed"
-            get_element("new-team-leeftijd").value = "Jong"
+            get_element("new-team-level").value = "1"
+            get_element("new-team-level").value = "3"
+            get_element("new-team-gender").value = "Mixed"
+            get_element("new-team-age").value = "Jong"
             self.sync_preferences_ui()
             self.teams_renderer.render()
             set_status(f"Team '{name}' toegevoegd.", "success")
@@ -79,7 +87,7 @@ class AppController:
             console.error(str(exc))
             set_status(f"Error: {exc}", "error")
 
-    async def import_csv_async(self) -> None:
+    async def import_teams_csv_async(self) -> None:
         file_input = get_element("teams-csv-file")
         files = file_input.files
         if not files or files.length == 0:
@@ -97,8 +105,29 @@ class AppController:
             console.error(str(exc))
             set_status(f"CSV import error: {exc}", "error")
 
+    async def import_prefs_csv_async(self) -> None:
+        file_input = get_element("prefs-csv-file")
+        files = file_input.files
+        if not files or files.length == 0:
+            return
+        file = files.item(0)
+        set_status(f"Reading {file.name}...", "info")
+        try:
+            csv_text = await file.text()
+            prefs = InputRepository.parse_prefs_csv_text(str(csv_text))
+            get_element("prefs-json").value = json.dumps(prefs, indent=2, ensure_ascii=False)
+            self.sync_preferences_ui()
+            self.teams_renderer.render()
+            set_status(f"{len(prefs)} teams geimporteerd van {file.name}.", "success")
+        except Exception as exc:
+            console.error(str(exc))
+            set_status(f"CSV import error: {exc}", "error")
+
     def on_teams_csv_selected(self, *args) -> None:
-        asyncio.create_task(self.import_csv_async())
+        asyncio.create_task(self.import_teams_csv_async())
+
+    def on_prefs_csv_selected(self, *args) -> None:
+        asyncio.create_task(self.import_prefs_csv_async())
 
     def load_example_data(self, *args) -> None:
         get_element("teams-json").value = json.dumps(EXAMPLE_TEAMS, indent=2, ensure_ascii=False)
@@ -146,58 +175,42 @@ class AppController:
         seed: Optional[int],
     ):
         for fields in range(1, 15):
-            wedstrijden, rest_verplicht, rest_optioneel = TournamentScheduler(
-                seed=seed
-            ).genereer_schema(
-                teams,
-                voorkeuren,
-                n_rondes=n_rondes,
-                n_velden=fields,
+            wedstrijden, rest_verplicht, = TournamentScheduler(
+                seed=seed, teams=teams, preferences=voorkeuren
+            ).generate_schedule(
+                n_rondes,
+                fields,
             )
             if not any(rest_verplicht.values()):
-                return wedstrijden, rest_verplicht, rest_optioneel, fields
+                return wedstrijden, rest_verplicht, fields
         return [], {}, {}, -1
 
     def on_generate(self, *args) -> None:
         try:
             teams, prefs, n_rondes, n_velden, seed = InputRepository.read_inputs()
-            scheduler = TournamentScheduler(seed=seed)
-            ok, wedstrijden, rest_verplicht, rest_opt, used_seed = scheduler.try_generate_with_retries(
-                teams,
-                prefs,
-                n_rondes,
-                n_velden,
-                max_tries=50,
-                prefer_seed=seed,
+            scheduler = TournamentScheduler(
+                seed=seed, teams=teams, preferences=prefs
             )
-            used_seed = used_seed or seed
-            if not ok:
-                set_status("Greedy faalde; probeer backtracking…", "info")
-                wedstrijden, rest_verplicht, rest_opt = TournamentScheduler(
-                    seed=used_seed
-                ).genereer_schema_backtracking(
-                    teams,
-                    prefs,
-                    n_rondes=n_rondes,
-                    n_velden=n_velden,
-                    time_limit_nodes=20_000,
-                    top_k_random=3,
-                )
-                ok = not any(rest_verplicht.values())
+
+            ok = True
+            wedstrijden, rest_verplicht = scheduler.generate_schedule(
+                n_rondes,
+                n_velden
+            )
+ 
             self.state.last_result = serialize_results(
                 teams,
                 wedstrijden,
                 rest_verplicht,
-                rest_opt,
                 n_rondes,
             )
             self.results_renderer.render_results(self.state.last_result)
+
             if ok:
                 set_status(f"Succesvol {len(wedstrijden)} wedstrijden gegenereerd.", "success")
             else:
                 set_status("Combinatie niet mogelijk (node-/tijdlimiet bereikt).", "error")
-            if used_seed is not None:
-                get_element("seed").value = str(used_seed)
+
         except Exception as exc:
             console.error(str(exc))
             set_status(f"Error: {exc}", "error")
@@ -249,7 +262,7 @@ class AppController:
             per_segment = []
             total_extra = 0
             for prototype in analyzer.group_prototypes(teams):
-                cache_key = (prototype.niveau, prototype.geslacht, prototype.leeftijd)
+                cache_key = (prototype.level, prototype.gender, prototype.age)
                 if cache_key in CAPACITY_SEED_CACHE:
                     extra = CAPACITY_SEED_CACHE[cache_key]
                 else:
@@ -262,11 +275,11 @@ class AppController:
                         prototype,
                     )
                     CAPACITY_SEED_CACHE[cache_key] = extra
-                per_segment.append((prototype.niveau, prototype.geslacht, prototype.leeftijd, extra))
+                per_segment.append((prototype.level, prototype.gender, prototype.age, extra))
                 total_extra += extra
             rows = [
-                f"<tr><td>Niveau {niveau}</td><td>{geslacht}</td><td>{leeftijd}</td><td><strong>+{extra}</strong></td></tr>"
-                for niveau, geslacht, leeftijd, extra in sorted(per_segment)
+                f"<tr><td>Niveau {level}</td><td>{gender}</td><td>{age}</td><td><strong>+{extra}</strong></td></tr>"
+                for level, gender, age, extra in sorted(per_segment)
             ]
             self.results_renderer.show_primary_summary(
                 f"""
@@ -319,6 +332,7 @@ class AppController:
             create_proxy(self.on_export_excel),
             create_proxy(self.on_capacity),
             create_proxy(self.on_add_team),
+            create_proxy(self.on_prefs_csv_selected)
         ]
         get_element("generate-btn").addEventListener("click", self.state.event_proxies[0])
         get_element("teams-csv-file").addEventListener("change", self.state.event_proxies[1])
@@ -331,6 +345,7 @@ class AppController:
         get_element("export-excel").addEventListener("click", self.state.event_proxies[8])
         get_element("capacity-btn").addEventListener("click", self.state.event_proxies[9])
         get_element("add-team-btn").addEventListener("click", self.state.event_proxies[10])
+        get_element("prefs-csv-file").addEventListener("change", self.state.event_proxies[11])
 
     def initialize(self) -> None:
         self.init_fields()

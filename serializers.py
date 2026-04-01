@@ -9,17 +9,16 @@ def serialize_results(
     teams: list[Team],
     wedstrijden: list[Match],
     rest_verplicht: dict[str, int],
-    rest_opt: dict[str, int],
     n_rondes: int,
 ) -> dict:
     return {
         "n_rondes": n_rondes,
         "teams": [
             {
-                "naam": team.naam,
-                "geslacht": team.geslacht,
-                "leeftijd": team.leeftijd,
-                "niveau": team.niveau,
+                "name": team.name,
+                "gender": team.gender,
+                "age": team.age,
+                "level": team.level,
             }
             for team in teams
         ],
@@ -28,22 +27,21 @@ def serialize_results(
                 "ronde": match.ronde,
                 "veld": match.veld,
                 "team_a": {
-                    "naam": match.team_a.naam,
-                    "geslacht": match.team_a.geslacht,
-                    "leeftijd": match.team_a.leeftijd,
-                    "niveau": match.team_a.niveau,
+                    "name": match.team_a.name,
+                    "gender": match.team_a.gender,
+                    "age": match.team_a.age,
+                    "level": match.team_a.level,
                 },
                 "team_b": {
-                    "naam": match.team_b.naam,
-                    "geslacht": match.team_b.geslacht,
-                    "leeftijd": match.team_b.leeftijd,
-                    "niveau": match.team_b.niveau,
+                    "name": match.team_b.name,
+                    "gender": match.team_b.gender,
+                    "age": match.team_b.age,
+                    "level": match.team_b.level,
                 },
             }
             for match in wedstrijden
         ],
         "remaining_required": rest_verplicht,
-        "remaining_optional": rest_opt,
     }
 
 
@@ -78,14 +76,14 @@ def build_excel_matches_rows(results: dict) -> list[list]:
         rows.append([
             int(match["ronde"]),
             int(match["veld"]),
-            str(match["team_a"]["naam"]),
-            str(match["team_a"]["geslacht"]),
-            str(match["team_a"]["leeftijd"]),
-            int(match["team_a"]["niveau"]),
-            str(match["team_b"]["naam"]),
-            str(match["team_b"]["geslacht"]),
-            str(match["team_b"]["leeftijd"]),
-            int(match["team_b"]["niveau"]),
+            str(match["team_a"]["name"]),
+            str(match["team_a"]["gender"]),
+            str(match["team_a"]["age"]),
+            int(match["team_a"]["level"]),
+            str(match["team_b"]["name"]),
+            str(match["team_b"]["gender"]),
+            str(match["team_b"]["age"]),
+            int(match["team_b"]["level"]),
         ])
     return rows
 
@@ -100,8 +98,8 @@ def build_excel_timeline_rows(results: dict) -> list[list]:
         veld = int(match["veld"])
         team_a = match["team_a"]
         team_b = match["team_b"]
-        timeline_lookup[str(team_a["naam"])][ronde] = f"{team_b['naam']} (Veld {veld:02d})"
-        timeline_lookup[str(team_b["naam"])][ronde] = f"{team_a['naam']} (Veld {veld:02d})"
+        timeline_lookup[str(team_a["name"])][ronde] = f"{team_b['name']} (Veld {veld:02d})"
+        timeline_lookup[str(team_b["name"])][ronde] = f"{team_a['name']} (Veld {veld:02d})"
 
     header = ["Team", "Geslacht", "Leeftijd", "Niveau"]
     header.extend([f"Ronde {ronde}" for ronde in range(1, n_rondes + 1)])
@@ -109,18 +107,18 @@ def build_excel_timeline_rows(results: dict) -> list[list]:
     sorted_teams = sorted(
         teams,
         key=lambda team: (
-            int(team.get("niveau", 0)),
-            str(team.get("geslacht", "")),
-            str(team.get("naam", "")),
+            int(team.get("level", 0)),
+            str(team.get("gender", "")),
+            str(team.get("name", "")),
         ),
     )
     for team in sorted_teams:
-        team_name = str(team["naam"])
+        team_name = str(team["name"])
         row = [
             team_name,
-            str(team["geslacht"]),
-            str(team["leeftijd"]),
-            int(team["niveau"]),
+            str(team["gender"]),
+            str(team["age"]),
+            int(team["level"]),
         ]
         for ronde in range(1, n_rondes + 1):
             row.append(timeline_lookup.get(team_name, {}).get(ronde, ""))

@@ -16,14 +16,14 @@ class TournamentScheduler:
         self.random = random.Random(seed)
 
     @staticmethod
-    def naam_index(teams: list[Team]) -> dict[str, Team]:
+    def name_index(teams: list[Team]) -> dict[str, Team]:
         index: dict[str, Team] = {}
         for team in teams:
-            if team.naam in index:
+            if team.name in index:
                 raise ValueError(
-                    f"Teamnaam '{team.naam}' komt dubbel voor; namen moeten uniek zijn."
+                    f"Teamname '{team.name}' komt dubbel voor; namen moeten uniek zijn."
                 )
-            index[team.naam] = team
+            index[team.name] = team
         return index
 
     @staticmethod
@@ -33,13 +33,13 @@ class TournamentScheduler:
         return not (huidige == vorige + 1 and not (vorige == 5 and huidige == 6))
 
     @staticmethod
-    def geslacht_compatibel(team_a: Team, team_b: Team) -> bool:
-        return team_a.geslacht == team_b.geslacht
+    def gender_compatibel(team_a: Team, team_b: Team) -> bool:
+        return team_a.gender == team_b.gender
 
     @staticmethod
     def compatibiliteit_score(team_a: Team, team_b: Team) -> int:
         score = 100
-        score -= abs(team_a.niveau - team_b.niveau) * 20
+        score -= abs(team_a.level - team_b.level) * 20
         return score
 
     def pareer_gretig(
@@ -48,7 +48,7 @@ class TournamentScheduler:
         al_gespeeld: set[frozenset[str]],
     ) -> list[tuple[Team, Team]]:
         paren: list[tuple[Team, Team]] = []
-        pool = sorted(beschikbaar, key=lambda team: (team.niveau, team.geslacht != "Mixed", team.naam))
+        pool = sorted(beschikbaar, key=lambda team: (team.level, team.gender != "Mixed", team.name))
         gebruikt: set[Team] = set()
         for index, team in enumerate(pool):
             if team in gebruikt:
@@ -57,14 +57,14 @@ class TournamentScheduler:
                 other
                 for other in pool[index + 1 :]
                 if other not in gebruikt
-                and self.geslacht_compatibel(team, other)
-                and frozenset((team.naam, other.naam)) not in al_gespeeld
+                and self.gender_compatibel(team, other)
+                and frozenset((team.name, other.name)) not in al_gespeeld
             ]
             kandidaten.sort(
                 key=lambda other: (
-                    frozenset((team.naam, other.naam)) in al_gespeeld,
+                    frozenset((team.name, other.name)) in al_gespeeld,
                     -self.compatibiliteit_score(team, other),
-                    other.naam,
+                    other.name,
                 )
             )
             if not kandidaten:
@@ -91,14 +91,14 @@ class TournamentScheduler:
                 other
                 for other in pool[index + 1 :]
                 if other not in gebruikt
-                and self.geslacht_compatibel(team, other)
-                and frozenset((team.naam, other.naam)) not in al_gespeeld
+                and self.gender_compatibel(team, other)
+                and frozenset((team.name, other.name)) not in al_gespeeld
             ]
             kandidaten.sort(
                 key=lambda other: (
-                    frozenset((team.naam, other.naam)) in al_gespeeld,
+                    frozenset((team.name, other.name)) in al_gespeeld,
                     -self.compatibiliteit_score(team, other),
-                    other.naam,
+                    other.name,
                 )
             )
             if not kandidaten:
@@ -147,18 +147,18 @@ class TournamentScheduler:
         n_rondes: int = 7,
         n_velden: int = 12,
     ) -> tuple[list[Match], dict[str, int], dict[str, int]]:
-        naam2team = self.naam_index(teams)
+        name2team = self.name_index(teams)
         resterend_verplicht: dict[Team, int] = {
-            team: VERPLICHTE_WEDSTRIJDEN.get(team.niveau, 0) for team in teams
+            team: VERPLICHTE_WEDSTRIJDEN.get(team.level, 0) for team in teams
         }
         resterend_opt: dict[Team, int] = {
-            team: OPTIONELE_WEDSTRIJDEN.get(team.niveau, 0) for team in teams
+            team: OPTIONELE_WEDSTRIJDEN.get(team.level, 0) for team in teams
         }
         laatste_ronde: dict[Team, Optional[int]] = {team: None for team in teams}
 
         voorkeur_set: set[frozenset[str]] = set()
         for team_a, team_b in voorkeuren:
-            if team_a in naam2team and team_b in naam2team and team_a != team_b:
+            if team_a in name2team and team_b in name2team and team_a != team_b:
                 voorkeur_set.add(frozenset((team_a, team_b)))
 
         ongeplande_voorkeuren = set(voorkeur_set)
@@ -201,8 +201,8 @@ class TournamentScheduler:
 
             def urgentie_key(pair: frozenset[str]) -> tuple[int, int, int, int, str]:
                 team_a_name, team_b_name = sorted(pair)
-                team_a = naam2team[team_a_name]
-                team_b = naam2team[team_b_name]
+                team_a = name2team[team_a_name]
+                team_b = name2team[team_b_name]
                 doelronde = voorkeur_doelronde.get(pair, ronde)
                 overdue_flag = 0 if doelronde <= ronde else 1
                 return (
@@ -217,8 +217,8 @@ class TournamentScheduler:
                 if veld_teller > n_velden or geplande_voorkeuren_deze_ronde >= voorkeur_quota:
                     break
                 team_a_name, team_b_name = list(pair)
-                team_a = naam2team[team_a_name]
-                team_b = naam2team[team_b_name]
+                team_a = name2team[team_a_name]
+                team_b = name2team[team_b_name]
                 if team_a in geplande_deze_ronde or team_b in geplande_deze_ronde:
                     continue
                 if not self.consecutieve_rondes_toegestaan(laatste_ronde[team_a], ronde):
@@ -229,7 +229,7 @@ class TournamentScheduler:
                     continue
                 if resterend_verplicht[team_b] == 0 and resterend_opt[team_b] == 0:
                     continue
-                if not self.geslacht_compatibel(team_a, team_b):
+                if not self.gender_compatibel(team_a, team_b):
                     continue
 
                 wedstrijden.append(Match(ronde, veld_teller, team_a, team_b))
@@ -238,7 +238,7 @@ class TournamentScheduler:
                 geplande_deze_ronde.update({team_a, team_b})
                 laatste_ronde[team_a] = ronde
                 laatste_ronde[team_b] = ronde
-                al_gespeeld.add(frozenset((team_a.naam, team_b.naam)))
+                al_gespeeld.add(frozenset((team_a.name, team_b.name)))
                 for team in (team_a, team_b):
                     if resterend_verplicht[team] > 0:
                         resterend_verplicht[team] -= 1
@@ -272,15 +272,15 @@ class TournamentScheduler:
                     geplande_deze_ronde.update({team_a, team_b})
                     laatste_ronde[team_a] = ronde
                     laatste_ronde[team_b] = ronde
-                    al_gespeeld.add(frozenset((team_a.naam, team_b.naam)))
+                    al_gespeeld.add(frozenset((team_a.name, team_b.name)))
                     for team in (team_a, team_b):
                         if resterend_verplicht[team] > 0:
                             resterend_verplicht[team] -= 1
                         elif resterend_opt[team] > 0:
                             resterend_opt[team] -= 1
 
-        rest_verplicht_by_name = {team.naam: resterend_verplicht[team] for team in teams}
-        rest_opt_by_name = {team.naam: resterend_opt[team] for team in teams}
+        rest_verplicht_by_name = {team.name: resterend_verplicht[team] for team in teams}
+        rest_opt_by_name = {team.name: resterend_opt[team] for team in teams}
         return wedstrijden, rest_verplicht_by_name, rest_opt_by_name
 
     def genereer_schema_backtracking(
@@ -292,18 +292,18 @@ class TournamentScheduler:
         time_limit_nodes: int = 20_000,
         top_k_random: int = 3,
     ) -> tuple[list[Match], dict[str, int], dict[str, int]]:
-        naam2team = self.naam_index(teams)
+        name2team = self.name_index(teams)
         resterend_verplicht: dict[Team, int] = {
-            team: VERPLICHTE_WEDSTRIJDEN.get(team.niveau, 0) for team in teams
+            team: VERPLICHTE_WEDSTRIJDEN.get(team.level, 0) for team in teams
         }
         resterend_opt: dict[Team, int] = {
-            team: OPTIONELE_WEDSTRIJDEN.get(team.niveau, 0) for team in teams
+            team: OPTIONELE_WEDSTRIJDEN.get(team.level, 0) for team in teams
         }
         laatste_ronde: dict[Team, Optional[int]] = {team: None for team in teams}
 
         voorkeur_set: set[frozenset[str]] = set()
         for team_a, team_b in voorkeuren:
-            if team_a in naam2team and team_b in naam2team and team_a != team_b:
+            if team_a in name2team and team_b in name2team and team_a != team_b:
                 voorkeur_set.add(frozenset((team_a, team_b)))
         ongeplande_voorkeuren = set(voorkeur_set)
         al_gespeeld: set[frozenset[str]] = set()
@@ -313,8 +313,8 @@ class TournamentScheduler:
         if not self.feasible_lower_bound(
             teams, 1, n_rondes, resterend_verplicht, laatste_ronde
         ):
-            return [], {team.naam: resterend_verplicht[team] for team in teams}, {
-                team.naam: resterend_opt[team] for team in teams
+            return [], {team.name: resterend_verplicht[team] for team in teams}, {
+                team.name: resterend_opt[team] for team in teams
             }
 
         def candidates_for_round(
@@ -333,20 +333,20 @@ class TournamentScheduler:
             base_pairs = self.pareer_gretig_randomized(
                 beschikbaar, al_gespeeld, top_k=top_k_random
             )
-            seen = {frozenset((a.naam, b.naam)) for a, b in base_pairs}
+            seen = {frozenset((a.name, b.name)) for a, b in base_pairs}
             for index, team_a in enumerate(beschikbaar):
                 for team_b in beschikbaar[index + 1 :]:
-                    pair = frozenset((team_a.naam, team_b.naam))
+                    pair = frozenset((team_a.name, team_b.name))
                     if pair in seen or pair in al_gespeeld:
                         continue
-                    if not self.geslacht_compatibel(team_a, team_b):
+                    if not self.gender_compatibel(team_a, team_b):
                         continue
                     base_pairs.append((team_a, team_b))
                     seen.add(pair)
 
             candidates: list[tuple[Team, Team, bool, int]] = []
             for team_a, team_b in base_pairs:
-                is_pref = frozenset((team_a.naam, team_b.naam)) in voorkeur_set
+                is_pref = frozenset((team_a.name, team_b.name)) in voorkeur_set
                 if is_pref and geplande_pref_cnt >= pref_quota:
                     continue
                 priority = (
@@ -355,7 +355,7 @@ class TournamentScheduler:
                     + self.compatibiliteit_score(team_a, team_b)
                 )
                 candidates.append((team_a, team_b, is_pref, priority))
-            candidates.sort(key=lambda item: (-item[3], item[0].naam, item[1].naam))
+            candidates.sort(key=lambda item: (-item[3], item[0].name, item[1].name))
             return candidates
 
         def recurse(
@@ -392,7 +392,7 @@ class TournamentScheduler:
                     prev_b = laatste_ronde[team_b]
                     laatste_ronde[team_a] = ronde
                     laatste_ronde[team_b] = ronde
-                    pair = frozenset((team_a.naam, team_b.naam))
+                    pair = frozenset((team_a.name, team_b.name))
                     was_pref_unplanned = pair in ongeplande_voorkeuren and is_pref
                     if was_pref_unplanned:
                         ongeplande_voorkeuren.remove(pair)
@@ -453,8 +453,8 @@ class TournamentScheduler:
 
         recurse(1, 1, set(), 0)
         return wedstrijden, {
-            team.naam: resterend_verplicht[team] for team in teams
-        }, {team.naam: resterend_opt[team] for team in teams}
+            team.name: resterend_verplicht[team] for team in teams
+        }, {team.name: resterend_opt[team] for team in teams}
 
     def try_generate_with_retries(
         self,
@@ -507,17 +507,17 @@ class CapacityAnalyzer:
     @staticmethod
     def clone_team_like(name_suffix: int, base_team: Team) -> Team:
         return Team(
-            niveau=base_team.niveau,
-            geslacht=base_team.geslacht,
-            naam=f"{base_team.naam} (nieuw {name_suffix})",
-            leeftijd=base_team.leeftijd,
+            level=base_team.level,
+            gender=base_team.gender,
+            name=f"{base_team.name} (nieuw {name_suffix})",
+            age=base_team.age,
         )
 
     @staticmethod
     def group_prototypes(teams: list[Team]) -> list[Team]:
         seen: dict[tuple[int, str, str], Team] = {}
         for team in teams:
-            key = (team.niveau, team.geslacht, team.leeftijd)
+            key = (team.level, team.gender, team.age)
             if key not in seen:
                 seen[key] = team
         return list(seen.values())

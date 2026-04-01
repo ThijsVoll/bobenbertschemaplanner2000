@@ -49,7 +49,7 @@ class InputRepository:
     def get_team_names(cls) -> list[str]:
         names: list[str] = []
         for item in cls.get_team_dicts():
-            name = str(item.get("naam", "") or "").strip()
+            name = str(item.get("name", "") or "").strip()
             if name:
                 names.append(name)
         return names
@@ -97,45 +97,57 @@ class InputRepository:
             for name in reader.fieldnames
             if name is not None
         }
-        naam_col = cls.pick_column(field_map, "naam", "team", "teamnaam", "name")
-        niveau_col = cls.pick_column(field_map, "niveau", "level")
-        geslacht_col = cls.pick_column(field_map, "geslacht", "gender")
-        leeftijd_col = cls.pick_column(field_map, "leeftijd", "age", "leeftijdscategorie")
+        name_col = cls.pick_column(field_map, "naam")
+        level_col = cls.pick_column(field_map, "niveau")
+        gender_col = cls.pick_column(field_map, "geslacht")
+        age_col = cls.pick_column(field_map, "leeftijd")
+        wedstrijden_col = cls.pick_column(field_map, "wedstrijden")
 
         teams: list[dict] = []
         for row_number, row in enumerate(reader, start=2):
             if not row:
                 continue
 
-            naam = str(row.get(naam_col, "") or "").strip()
-            niveau_text = str(row.get(niveau_col, "") or "").strip()
-            geslacht = str(row.get(geslacht_col, "") or "").strip()
-            leeftijd = str(row.get(leeftijd_col, "") or "").strip()
+            name = str(row.get(name_col, "") or "").strip()
+            level_text = str(row.get(level_col, "") or "").strip()
+            gender = str(row.get(gender_col, "") or "").strip()
+            age = str(row.get(age_col, "") or "").strip()
+            wedstrijden_text = str(row.get(wedstrijden_col, "") or "").strip()
 
-            if not any([naam, niveau_text, geslacht, leeftijd]):
+            if not any([name, level_text, gender, age]):
                 continue
-            if not naam:
-                raise ValueError(f"CSV row {row_number}: column '{naam_col}' is empty.")
-            if not niveau_text:
-                raise ValueError(f"CSV row {row_number}: column '{niveau_col}' is empty.")
-            if not geslacht:
-                raise ValueError(f"CSV row {row_number}: column '{geslacht_col}' is empty.")
-            if not leeftijd:
-                raise ValueError(f"CSV row {row_number}: column '{leeftijd_col}' is empty.")
-
+            if not name:
+                raise ValueError(f"CSV row {row_number}: column '{name_col}' is empty.")
+            if not level_text:
+                raise ValueError(f"CSV row {row_number}: column '{level_col}' is empty.")
+            if not gender:
+                raise ValueError(f"CSV row {row_number}: column '{gender_col}' is empty.")
+            if not age:
+                raise ValueError(f"CSV row {row_number}: column '{age_col}' is empty.")
+            if not wedstrijden_text:
+                raise ValueError(f"CSV row {row_number}: column '{wedstrijden_col}' is empty.")
+            
             try:
-                niveau = int(niveau_text)
+                level = int(level_text)
             except ValueError as exc:
                 raise ValueError(
-                    f"CSV row {row_number}: niveau must be an integer, got '{niveau_text}'."
+                    f"CSV row {row_number}: level must be an integer, got '{level_text}'."
                 ) from exc
 
+            try:
+                wedstrijden = int(wedstrijden_text)
+            except ValueError as exc:
+                raise ValueError(
+                    f"CSV row {row_number}: level must be an integer, got '{wedstrijden_text}'."
+                ) from exc
+            
             teams.append(
                 {
-                    "niveau": niveau,
-                    "geslacht": geslacht,
-                    "naam": naam,
-                    "leeftijd": leeftijd,
+                    "level": level,
+                    "gender": gender,
+                    "name": name,
+                    "age": age,
+                    "wedstrijden": wedstrijden
                 }
             )
 
@@ -143,6 +155,56 @@ class InputRepository:
             raise ValueError("No team rows were found in the CSV file.")
         return teams
 
+    @classmethod
+    def parse_prefs_csv_text(cls, csv_text: str) -> list[dict]:
+        if not csv_text or not csv_text.strip():
+            raise ValueError("The selected CSV file is empty.")
+
+        sample = csv_text[:4096]
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+        except csv.Error:
+            class DefaultDialect(csv.excel):
+                delimiter = ","
+
+            dialect = DefaultDialect
+
+        reader = csv.DictReader(io.StringIO(csv_text), dialect=dialect)
+        if not reader.fieldnames:
+            raise ValueError("Could not read CSV headers.")
+        
+        field_map = {
+            cls.normalize_header(name): name
+            for name in reader.fieldnames
+            if name is not None
+            }
+
+        team_a_col = cls.pick_column(field_map, "teama")
+        team_b_col = cls.pick_column(field_map, "teamb")
+
+        prefs = []
+        for row_number, row in enumerate(reader, start=2):
+            if not row:
+                continue
+
+            team_a = str(row.get(team_a_col, "") or "").strip().replace("\u200b", "")
+            team_b = str(row.get(team_b_col, "") or "").strip().replace("\u200b", "")
+           
+            if not any([team_a, team_b]):
+                continue
+            if not team_a:
+                raise ValueError(f"CSV row {row_number}: column 'teamA' is empty.")
+            if not team_b:
+                raise ValueError(f"CSV row {row_number}: column 'teamB' is empty.")
+            prefs.append(
+                [team_a, team_b]
+    
+            )
+
+        if not prefs:
+            raise ValueError("No preference rows were found in the CSV file.")
+        return prefs
+    
     @classmethod
     def read_inputs(
         cls,
@@ -160,10 +222,11 @@ class InputRepository:
                 raise ValueError("Each team must be a JSON object.")
             teams.append(
                 Team(
-                    niveau=int(item["niveau"]),
-                    geslacht=str(item["geslacht"]),
-                    naam=str(item["naam"]),
-                    leeftijd=str(item["leeftijd"]),
+                    level=int(item["level"]),
+                    gender=str(item["gender"]),
+                    name=str(item["name"]),
+                    age=str(item["age"]),
+                    matches=int(item["wedstrijden"]),
                 )
             )
 

@@ -7,10 +7,11 @@ from dataclasses import dataclass
 class Team:
     """Represents a tournament team."""
 
-    niveau: int
-    geslacht: str
-    naam: str
-    leeftijd: str
+    level: int
+    gender: str
+    name: str
+    age: str
+    matches: int
 
 
 @dataclass

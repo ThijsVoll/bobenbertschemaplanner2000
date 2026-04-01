@@ -61,7 +61,7 @@
             <input id="teams-csv-file" type="file" accept=".csv,text/csv" />
           </div>
           <small class="muted">
-            Verwachtte kolommen: naam, niveau, geslacht, leeftijd.
+            Verwachtte kolommen: name, level, gender, age.
           </small>
         </label>
 
@@ -69,15 +69,15 @@
         <section class="field-block">
           <h2>Teams beheren</h2>
 
-          <div class="field-row" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 12px; align-items: end;">
+          <div class="field-row" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 12px; align-items: end;">
   <label>
     <span>Naam</span>
-    <input id="new-team-name" type="text" placeholder="Teamnaam" />
+    <input id="new-team-name" type="text" placeholder="Teamname" />
   </label>
 
   <label>
     <span>Geslacht</span>
-    <select id="new-team-geslacht">
+    <select id="new-team-gender">
       <option value="Mixed">Mixed</option>
       <option value="Heren">Heren</option>
       <option value="Dames">Dames</option>
@@ -86,7 +86,7 @@
 
   <label>
     <span>Leeftijd</span>
-    <select id="new-team-leeftijd">
+    <select id="new-team-age">
       <option value="Jong">Jong</option>
       <option value="Oud">Oud</option>
     </select>
@@ -94,7 +94,12 @@
 
   <label>
     <span>Niveau</span>
-    <input id="new-team-niveau" type="number" min="1" value="1" />
+    <input id="new-team-level" type="number" min="1" max="3" value="1" />
+  </label>
+
+  <label>
+    <span>Wedstrijden</span>
+    <input id="new-team-matches" type="number" min="1" max="3" value="1" />
   </label>
 
   <button id="add-team-btn" type="button" class="secondary">Team toevoegen</button>
@@ -110,6 +115,16 @@
 
         <label class="field-block">
           <textarea id="teams-json" spellcheck="false" hidden></textarea>
+        </label>
+
+        <label class="field-block">
+          <span>Voorkeuren CSV importeren</span>
+          <div class="field-row" style="align-items: end; gap: 12px; flex-wrap: wrap;">
+            <input id="prefs-csv-file" type="file" accept=".csv,text/csv" />
+          </div>
+          <small class="muted">
+            Verwachtte kolommen: teamA, teamB
+          </small>
         </label>
 
         <section class="field-block">
