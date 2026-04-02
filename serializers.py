@@ -19,6 +19,7 @@ def serialize_results(
                 "gender": team.gender,
                 "age": team.age,
                 "level": team.level,
+                "matches": team.matches
             }
             for team in teams
         ],

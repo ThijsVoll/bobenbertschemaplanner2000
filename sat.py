@@ -2,17 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
-
+import threading
 from models import Match, Team
 
-try:
-    from pysat.card import CardEnc
-    from pysat.formula import CNF, IDPool
-    from pysat.solvers import Solver
-except ImportError as exc:  # pragma: no cover
-    raise ImportError(
-        "python-sat is required for TournamentSchedulerSAT. Install it with `pip install python-sat`."
-    ) from exc
+
+from pysat.card import CardEnc
+from pysat.formula import CNF, IDPool
+from pysat.solvers import Solver
+
 
 
 # ------------------------------------------------------------
@@ -43,6 +40,12 @@ class _IncrementalCountOptimizer:
         self.solver = solver
         self.pool = pool
         self._cache: Dict[Tuple[str, int], int] = {}
+
+    def stop_solver_after(self, seconds):
+        """Interrupt solver after given seconds."""
+        timer = threading.Timer(seconds, self.solver.interrupt)
+        timer.start()
+        return timer
 
     def bound_selector(self, label: str, lits: List[int], k: int) -> Optional[int]:
         """
@@ -102,11 +105,12 @@ class _IncrementalCountOptimizer:
             print(f'mid: {mid}')
             sel = self.bound_selector(label, lits, mid)
             trial = assumptions + ([] if sel is None else [sel])
-
             if self.solver.solve(assumptions=trial):
                 print('solver said true!')
                 low = mid
                 best_model = self.solver.get_model()
+                if mid == high:
+                    return low, best_model
             else:
                 print('its false, restarting')
                 high = mid - 1
@@ -267,6 +271,7 @@ class TournamentSchedulerSAT:
         }
 
         team_degrees: Dict[str, int] = {name: 0 for name in team_names}
+        non_pref_team_degrees: Dict[str, int] = {name: 0 for name in team_names}
 
         preference_pair_vars: List[int] = []
         regular_match_vars: List[int] = []
@@ -281,6 +286,10 @@ class TournamentSchedulerSAT:
         for a, b in allowed_pairs:
             team_degrees[a] += 1
             team_degrees[b] += 1
+            if not self._is_preference(a,b):
+                non_pref_team_degrees[a] += 1
+                non_pref_team_degrees[b] += 1
+             
 
         for r in range(1, num_rounds + 1):
             for a, b in allowed_pairs:
@@ -358,11 +367,13 @@ class TournamentSchedulerSAT:
         # (5) Team total match limits, using play vars and accounting for the 5-6 exception
         max_nonconsecutive_slots = self._max_matches_with_consecutive_exceptions(num_rounds)
         effective_caps: Dict[str, int] = {}
+        non_pref_caps: Dict[str, int] = {}
 
         for team_name in team_names:
             requested = max(0, self.teams[team_name].matches_needed)
             cap = min(requested, max_nonconsecutive_slots, team_degrees[team_name])
             effective_caps[team_name] = cap
+            non_pref_caps[team_name] = min(requested, max_nonconsecutive_slots, non_pref_team_degrees[team_name])
 
             play_lits = [all_play_vars[(r, team_name)] for r in range(1, num_rounds + 1)]
 
@@ -378,6 +389,7 @@ class TournamentSchedulerSAT:
             "match_var": match_var,
             "play_var": play_var,
             "effective_caps": effective_caps,
+            "non_pref_caps": non_pref_caps,
             "all_play_vars": all_play_vars,
             "all_match_vars": all_match_vars,
             "preference_pair_vars": preference_pair_vars,
@@ -401,10 +413,11 @@ class TournamentSchedulerSAT:
             all_match_lits: List[int] = metadata["all_match_vars"]
 
             # Tight upper bounds help the binary search a lot.
+            
             max_possible_matches = min(
                 num_rounds * num_fields,
-                sum(metadata["effective_caps"].values()) // 2,
-                len(all_match_lits),
+                sum(metadata["non_pref_caps"].values()) // 2,
+                len(metadata["allowed_pairs"]),
             )
 
             print(f'max possible matches: {max_possible_matches}')
@@ -419,6 +432,7 @@ class TournamentSchedulerSAT:
                 fixed_assumptions=[],
             )
             print('done!')
+            print(f'best_pref: {best_pref}')
             if pref_model is None:
                 return [], {name: t.matches_needed for name, t in self.teams.items()}
 

@@ -386,6 +386,8 @@ class ResultsRenderer:
             team_level = int(team["level"])
             team_gender = str(team["gender"])
             team_age = str(team["age"])
+            team_matches = str(team["matches"])
+            matches_played = str( int(team["matches"]) - int(results['remaining_required'][team_name]))
             cells: list[str] = []
             for ronde in range(1, n_rondes + 1):
                 slot = timeline_lookup.get(team_name, {}).get(ronde)
@@ -411,6 +413,7 @@ class ResultsRenderer:
                     <div class="timeline-team-name">{html.escape(team_name)}</div>
                     <span class="timeline-team-meta">{html.escape(team_gender)} ·
                     {html.escape(team_age)} · Niveau {team_level}</span>
+                    <strong>{matches_played} / {team_matches}</strong>
                   </td>
                   {''.join(cells)}
                 </tr>
@@ -439,7 +442,7 @@ class ResultsRenderer:
                 <strong>{len(matches)}</strong></div>
               <div class="summary-item"><span class="muted">Rondes gebruikt</span>
                 <strong>{len(rounds)}</strong></div>
-              <div class="summary-item"><span class="muted">Niet ingedeelde wedstrijden (Verplicht/optioneel)</span>
+              <div class="summary-item"><span class="muted">Niet ingedeelde wedstrijden / team</span>
                 <strong>{sum(results['remaining_required'].values())}</strong>
               </div>
             </div>
