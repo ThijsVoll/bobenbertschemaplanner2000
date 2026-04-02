@@ -93,14 +93,22 @@ class _IncrementalCountOptimizer:
         low, high = 0, upper_bound
 
         while low < high:
+            print(f'low: {low}')
+            print(f'high: {high}')
+
             mid = (low + high + 1) // 2
+            print(f'low: {low}')
+            print(f'high: {high}')
+            print(f'mid: {mid}')
             sel = self.bound_selector(label, lits, mid)
             trial = assumptions + ([] if sel is None else [sel])
 
             if self.solver.solve(assumptions=trial):
+                print('solver said true!')
                 low = mid
                 best_model = self.solver.get_model()
             else:
+                print('its false, restarting')
                 high = mid - 1
 
         return low, best_model
@@ -115,7 +123,7 @@ class TournamentSchedulerSAT:
 
     Hard constraints:
     - a team plays at most once per round
-    - a team may not play in consecutive rounds
+    - a team may not play in consecutive rounds, except between rounds 5 and 6
     - the same pairing is used at most once overall
     - a team is scheduled for at most its requested number of matches
     - each round uses at most `num_fields` matches
@@ -123,7 +131,7 @@ class TournamentSchedulerSAT:
     - preference pairs are allowed even when they cross groups
 
     Optimization:
-    Phase 1: maximize number of preference matches
+    Phase 1: maximize number of unique preference pairs scheduled
     Phase 2: subject to phase 1 optimum, maximize total matches
     """
 
@@ -207,6 +215,24 @@ class TournamentSchedulerSAT:
 
         return pairs
 
+    @staticmethod
+    def _allows_consecutive_between(round_a: int, round_b: int) -> bool:
+        """Return True when a team may play in both consecutive rounds."""
+        lo, hi = sorted((round_a, round_b))
+        return lo == 5 and hi == 6
+
+    @classmethod
+    def _max_matches_with_consecutive_exceptions(cls, num_rounds: int) -> int:
+        """
+        Maximum number of rounds a single team can play under the no-consecutive
+        rule, with the explicit exception that rounds 5 and 6 may both be used.
+        """
+        if num_rounds <= 0:
+            return 0
+
+        base = (num_rounds + 1) // 2
+        return base + (1 if num_rounds >= 6 else 0)
+
     # ------------------------------------------------------------
     # Build hard CNF only
     # ------------------------------------------------------------
@@ -224,6 +250,10 @@ class TournamentSchedulerSAT:
         def play_var(round_number: int, team_name: str) -> int:
             return pool.id(("plays", round_number, team_name))
 
+        def pref_used_var(a: str, b: str) -> int:
+            x, y = sorted((a, b))
+            return pool.id(("pref-used", x, y))
+
         by_round_team_matches: Dict[Tuple[int, str], List[int]] = {
             (r, name): []
             for r in range(1, num_rounds + 1)
@@ -238,7 +268,7 @@ class TournamentSchedulerSAT:
 
         team_degrees: Dict[str, int] = {name: 0 for name in team_names}
 
-        preference_match_vars: List[int] = []
+        preference_pair_vars: List[int] = []
         regular_match_vars: List[int] = []
         all_match_vars: List[int] = []
 
@@ -263,9 +293,25 @@ class TournamentSchedulerSAT:
                 by_round_matches[r].append(mv)
 
                 if self._is_preference(a, b):
-                    preference_match_vars.append(mv)
+                    pass
                 else:
                     regular_match_vars.append(mv)
+
+        # Preference objective vars: one literal per preference pair, regardless of round.
+        for a, b in allowed_pairs:
+            if not self._is_preference(a, b):
+                continue
+
+            pu = pref_used_var(a, b)
+            preference_pair_vars.append(pu)
+            pair_lits = by_pair[frozenset((a, b))]
+
+            # Any round-level match implies the preference pair is used.
+            for mv in pair_lits:
+                cnf.append([-mv, pu])
+
+            # If the pair is marked used, it must occur in some round.
+            cnf.append([-pu] + pair_lits)
 
         # (1) Team-round linking: p[r,t] <-> exactly one incident match in round r
         for (r, team_name), match_lits in by_round_team_matches.items():
@@ -287,9 +333,11 @@ class TournamentSchedulerSAT:
                 enc = CardEnc.atmost(lits=match_lits, bound=1, vpool=pool)
                 cnf.extend(enc.clauses)
 
-        # (2) No consecutive rounds for any team: ¬p[r,t] ∨ ¬p[r+1,t]
+        # (2) No consecutive rounds for any team, except rounds 5 and 6 may both be used.
         for team_name in team_names:
             for r in range(1, num_rounds):
+                if self._allows_consecutive_between(r, r + 1):
+                    continue
                 cnf.append([-all_play_vars[(r, team_name)], -all_play_vars[(r + 1, team_name)]])
 
         # (3) Same pairing used at most once overall
@@ -307,8 +355,8 @@ class TournamentSchedulerSAT:
                 enc = CardEnc.atmost(lits=lits, bound=num_fields, vpool=pool)
                 cnf.extend(enc.clauses)
 
-        # (5) Team total match limits, using play vars
-        max_nonconsecutive_slots = (num_rounds + 1) // 2
+        # (5) Team total match limits, using play vars and accounting for the 5-6 exception
+        max_nonconsecutive_slots = self._max_matches_with_consecutive_exceptions(num_rounds)
         effective_caps: Dict[str, int] = {}
 
         for team_name in team_names:
@@ -332,7 +380,7 @@ class TournamentSchedulerSAT:
             "effective_caps": effective_caps,
             "all_play_vars": all_play_vars,
             "all_match_vars": all_match_vars,
-            "preference_match_vars": preference_match_vars,
+            "preference_pair_vars": preference_pair_vars,
             "regular_match_vars": regular_match_vars,
         }
 
@@ -349,7 +397,7 @@ class TournamentSchedulerSAT:
         with Solver(name="g3", bootstrap_with=cnf.clauses) as solver:
             opt = _IncrementalCountOptimizer(solver=solver, pool=pool)
 
-            pref_lits: List[int] = metadata["preference_match_vars"]
+            pref_lits: List[int] = metadata["preference_pair_vars"]
             all_match_lits: List[int] = metadata["all_match_vars"]
 
             # Tight upper bounds help the binary search a lot.
@@ -358,8 +406,11 @@ class TournamentSchedulerSAT:
                 sum(metadata["effective_caps"].values()) // 2,
                 len(all_match_lits),
             )
-            max_possible_pref = min(len(pref_lits), max_possible_matches)
 
+            print(f'max possible matches: {max_possible_matches}')
+            max_possible_pref = min(len(pref_lits), max_possible_matches)
+            
+            print('starting to maximize prefs')
             # Phase 1: maximize number of preference matches.
             best_pref, pref_model = opt.maximize(
                 label="pref-count",
@@ -367,13 +418,13 @@ class TournamentSchedulerSAT:
                 upper_bound=max_possible_pref,
                 fixed_assumptions=[],
             )
-
+            print('done!')
             if pref_model is None:
                 return [], {name: t.matches_needed for name, t in self.teams.items()}
 
-            pref_fix_sel = opt.bound_selector("pref-fixed", pref_lits, best_pref)
+            pref_fix_sel = opt.bound_selector("pref-count", pref_lits, best_pref)
             phase2_assumptions = [] if pref_fix_sel is None else [pref_fix_sel]
-
+            print('starting to maximize matches')
             # Phase 2: subject to best preference count, maximize total matches.
             best_total, final_model = opt.maximize(
                 label="total-count",
@@ -382,6 +433,7 @@ class TournamentSchedulerSAT:
                 fixed_assumptions=phase2_assumptions,
             )
 
+            print('done!')
             self.last_node_visits = 0  # SAT solve count could be tracked separately if wanted.
 
             if final_model is None:
