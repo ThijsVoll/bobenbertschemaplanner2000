@@ -10,7 +10,8 @@ from constants import CAPACITY_SEED_CACHE, EXAMPLE_PREFS, EXAMPLE_TEAMS
 from data_access import InputRepository
 from exporters import ExcelExporter
 from renderers import PreferencesRenderer, ResultsRenderer, TeamsRenderer
-from schedulerv2 import CapacityAnalyzer, TournamentScheduler
+from schedulerv2 import CapacityAnalyzer
+from sat import TournamentSchedulerSAT as TournamentScheduler
 from serializers import serialize_results
 from state import AppState
 

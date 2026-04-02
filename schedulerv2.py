@@ -101,6 +101,7 @@ class TournamentScheduler:
         self,
         round_number: int,
         used: set,
+        used_pairings: List[Tuple[str, str]]
     ) -> List[Tuple[str, str]]:
         result = []
 
@@ -117,6 +118,9 @@ class TournamentScheduler:
             if not self.consecutive_rounds_allowed(self.teams[b].last_round, round_number):
                 continue
 
+            if frozenset((a, b)) in used_pairings:
+                continue
+
             used.add(a)
             used.add(b)
             result.append((a, b))
@@ -131,7 +135,7 @@ class TournamentScheduler:
         round_number: int,
         used: set,
         max_pairs: int,
-        used_pairs: List[Tuple[str, str]]
+        used_pairings: List[Tuple[str, str]]
     ) -> List[Tuple[str, str]]:
         result = []
         teams = self._eligible()
@@ -150,8 +154,10 @@ class TournamentScheduler:
                     continue
                 if not self.consecutive_rounds_allowed(tb.last_round, round_number):
                     continue
-                if (ta.name, tb.name) in used_pairs:
+                
+                if frozenset((ta.name, tb.name)) in used_pairings:
                     continue
+
 
                 used.add(ta.name)
                 used.add(tb.name)
@@ -190,7 +196,7 @@ class TournamentScheduler:
     # MAIN ENTRY: required API
     # ------------------------------------------------------------
 
-    def generate_schedule(
+    def _generate(
         self,
         num_rounds: int = 7,
         num_fields: int = 12
@@ -201,13 +207,13 @@ class TournamentScheduler:
         - remaining_matches_by_team: dict[str, int]
         """
         all_matches: List[Match] = []
-        used_pairings: List[Tuple] = []
+        used_pairings: set[frozenset[str]] = set()
 
         for round_number in range(1, num_rounds + 1):
             used = set()
 
             # (1) Preference matches first
-            pref_pairs = self._find_preference_pairings(round_number, used)
+            pref_pairs = self._find_preference_pairings(round_number, used, used_pairings)
 
             # (2) Fill remaining fields with regular matches
             remaining_slots = num_fields - len(pref_pairs)
@@ -221,7 +227,7 @@ class TournamentScheduler:
             all_matches.extend(matches)
 
             for match in matches:
-                used_pairings.append((match.team_a.name, match.team_b.name))
+                used_pairings.add(frozenset((match.team_a.name, match.team_b.name)))
 
             # Stop early if everything satisfied
             if all(t.matches_needed <= 0 for t in self.teams.values()):
@@ -229,6 +235,15 @@ class TournamentScheduler:
 
         remaining = {name: t.matches_needed for name, t in self.teams.items()}
         return all_matches, remaining
+    
+    def generate_schedule(
+        self,
+        num_rounds: int = 7,
+        num_fields: int = 12
+    ) -> Tuple[List[Match], Dict[str, int]]:
+        
+        return self._generate(num_rounds, num_fields)
+
     
 class CapacityAnalyzer:
     """Estimate how many additional teams of a profile still fit in the schedule."""

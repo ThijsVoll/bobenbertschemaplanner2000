@@ -1,3 +1,4 @@
+packages = ["python-sat"]
 
 [files]
 "./controller.py" = "./controller.py"
@@ -11,3 +12,4 @@
 "./scheduler.py" = "./scheduler.py"
 "./serializers.py" = "./serializers.py"
 "./state.py" = "./state.py"
+"./sat.py" = "./sat.py"
