@@ -213,8 +213,6 @@ class InputRepository:
         prefs_raw = cls.safe_load_json_array("prefs-json")
         n_rondes = int(get_element("n-rondes").value)
         n_velden = int(get_element("n-velden").value)
-        seed_text = get_element("seed").value.strip()
-        seed = int(seed_text) if seed_text else None
 
         teams: list[Team] = []
         for item in teams_raw:
@@ -237,4 +235,4 @@ class InputRepository:
                     "Each preference must contain exactly 2 team names."
                 )
             prefs.append((str(pair[0]), str(pair[1])))
-        return teams, prefs, n_rondes, n_velden, seed
+        return teams, prefs, n_rondes, n_velden

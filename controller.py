@@ -6,7 +6,7 @@ import random
 from typing import Optional
 
 from browser import console, create_proxy, document, get_element, set_status
-from constants import CAPACITY_SEED_CACHE, EXAMPLE_PREFS, EXAMPLE_TEAMS
+from constants import  EXAMPLE_PREFS, EXAMPLE_TEAMS
 from data_access import InputRepository
 from exporters import ExcelExporter
 from renderers import PreferencesRenderer, ResultsRenderer, TeamsRenderer
@@ -168,30 +168,10 @@ class AppController:
     def on_prefs_json_changed(self, *args) -> None:
         self.preferences_renderer.render()
 
-    def bereken_minimaal_aantal_velden(
-        self,
-        teams,
-        voorkeuren,
-        n_rondes: int,
-        seed: Optional[int],
-    ):
-        for fields in range(1, 15):
-            wedstrijden, rest_verplicht, = TournamentScheduler(
-                seed=seed, teams=teams, preferences=voorkeuren
-            ).generate_schedule(
-                n_rondes,
-                fields,
-            )
-            if not any(rest_verplicht.values()):
-                return wedstrijden, rest_verplicht, fields
-        return [], {}, {}, -1
-
     def on_generate(self, *args) -> None:
         try:
-            teams, prefs, n_rondes, n_velden, seed = InputRepository.read_inputs()
-            scheduler = TournamentScheduler(
-                seed=seed, teams=teams, preferences=prefs
-            )
+            teams, prefs, n_rondes, n_velden= InputRepository.read_inputs()
+            scheduler = TournamentScheduler(teams=teams, preferences=prefs)
 
             ok = True
             wedstrijden, rest_verplicht = scheduler.generate_schedule(
@@ -212,93 +192,6 @@ class AppController:
             else:
                 set_status("Combinatie niet mogelijk (node-/tijdlimiet bereikt).", "error")
 
-        except Exception as exc:
-            console.error(str(exc))
-            set_status(f"Error: {exc}", "error")
-
-    def on_calculate(self, *args) -> None:
-        try:
-            teams, prefs, n_rondes, n_velden, seed = InputRepository.read_inputs()
-            succes = False
-            wedstrijden = []
-            rest_verplicht: dict[str, int] = {}
-            rest_opt: dict[str, int] = {}
-            result_n_velden = n_velden
-            for _ in range(1000):
-                wedstrijden, rest_verplicht, rest_opt, result_n_velden = self.bereken_minimaal_aantal_velden(
-                    teams=teams,
-                    voorkeuren=prefs,
-                    n_rondes=n_rondes,
-                    seed=seed,
-                )
-                if not any(rest_verplicht.values()):
-                    succes = True
-                    get_element("n-velden").value = str(result_n_velden)
-                    break
-                seed = random.randint(1, 1000)
-                get_element("seed").value = str(seed)
-            self.state.last_result = serialize_results(
-                teams,
-                wedstrijden,
-                rest_verplicht,
-                rest_opt,
-                n_rondes,
-            )
-            self.results_renderer.render_results(self.state.last_result)
-            if succes:
-                set_status(f"Succesvol {len(wedstrijden)} wedstrijden gegenereerd.", "success")
-            else:
-                set_status("Combinatie niet mogelijk.", "error")
-        except Exception as exc:
-            console.error(str(exc))
-            set_status(f"Error: {exc}", "error")
-
-    def on_capacity(self, *args) -> None:
-        try:
-            teams, prefs, n_rondes, n_velden, seed = InputRepository.read_inputs()
-            if not teams:
-                set_status("Geen teams geladen.", "error")
-                return
-            analyzer = CapacityAnalyzer(TournamentScheduler(seed=seed))
-            per_segment = []
-            total_extra = 0
-            for prototype in analyzer.group_prototypes(teams):
-                cache_key = (prototype.level, prototype.gender, prototype.age)
-                if cache_key in CAPACITY_SEED_CACHE:
-                    extra = CAPACITY_SEED_CACHE[cache_key]
-                else:
-                    extra = analyzer.max_extra_for_profile(
-                        teams,
-                        prefs,
-                        n_rondes,
-                        n_velden,
-                        seed,
-                        prototype,
-                    )
-                    CAPACITY_SEED_CACHE[cache_key] = extra
-                per_segment.append((prototype.level, prototype.gender, prototype.age, extra))
-                total_extra += extra
-            rows = [
-                f"<tr><td>Niveau {level}</td><td>{gender}</td><td>{age}</td><td><strong>+{extra}</strong></td></tr>"
-                for level, gender, age, extra in sorted(per_segment)
-            ]
-            self.results_renderer.show_primary_summary(
-                f"""
-                <div class="summary-list">
-                  <div class="summary-item"><span class="muted">Extra teams (totaal)</span>
-                    <strong>+{total_extra}</strong></div>
-                </div>
-                <div class="round-block" style="margin-top:12px;">
-                  <div class="round-header">Per segment</div>
-                  <table class="remaining-table">
-                    <thead><tr><th>Niveau</th><th>Geslacht</th><th>Leeftijd</th><th>Mogelijk extra</th></tr></thead>
-                    <tbody>{''.join(rows) if rows else '<tr><td colspan="4" class="muted">Geen segmenten gevonden.</td></tr>'}</tbody>
-                  </table>
-                </div>
-                """
-            )
-            self.results_renderer.clear_output_sections()
-            set_status("Capaciteit berekend.", "success")
         except Exception as exc:
             console.error(str(exc))
             set_status(f"Error: {exc}", "error")
@@ -327,11 +220,9 @@ class AppController:
             create_proxy(self.on_add_preference),
             create_proxy(self.on_teams_json_changed),
             create_proxy(self.on_prefs_json_changed),
-            create_proxy(self.on_calculate),
             create_proxy(self.on_view_table),
             create_proxy(self.on_view_timeline),
             create_proxy(self.on_export_excel),
-            create_proxy(self.on_capacity),
             create_proxy(self.on_add_team),
             create_proxy(self.on_prefs_csv_selected)
         ]
@@ -340,13 +231,11 @@ class AppController:
         get_element("add-pref-btn").addEventListener("click", self.state.event_proxies[2])
         get_element("teams-json").addEventListener("change", self.state.event_proxies[3])
         get_element("prefs-json").addEventListener("change", self.state.event_proxies[4])
-        get_element("min-fields-calc-button").addEventListener("click", self.state.event_proxies[5])
-        get_element("view-table-btn").addEventListener("click", self.state.event_proxies[6])
-        get_element("view-timeline-btn").addEventListener("click", self.state.event_proxies[7])
-        get_element("export-excel").addEventListener("click", self.state.event_proxies[8])
-        get_element("capacity-btn").addEventListener("click", self.state.event_proxies[9])
-        get_element("add-team-btn").addEventListener("click", self.state.event_proxies[10])
-        get_element("prefs-csv-file").addEventListener("change", self.state.event_proxies[11])
+        get_element("view-table-btn").addEventListener("click", self.state.event_proxies[5])
+        get_element("view-timeline-btn").addEventListener("click", self.state.event_proxies[6])
+        get_element("export-excel").addEventListener("click", self.state.event_proxies[7])
+        get_element("add-team-btn").addEventListener("click", self.state.event_proxies[8])
+        get_element("prefs-csv-file").addEventListener("change", self.state.event_proxies[9])
 
     def initialize(self) -> None:
         self.init_fields()

@@ -262,6 +262,7 @@ class ResultsRenderer:
 
     def __init__(self, state: AppState) -> None:
         self.state = state
+        self._timeline_empty_slot_proxies = []
 
     def set_output_view(self, view: str) -> None:
         self.state.output_view = view
@@ -339,12 +340,44 @@ class ResultsRenderer:
             )
         output_element.innerHTML = ''.join(sections) or '<p class="muted">Geen wedstrijden gepland.</p>'
 
+    def on_empty_timeline_slot_click(self, event=None) -> None:
+        target = getattr(event, "currentTarget", None) or getattr(event, "target", None)
+        if target is None:
+            return
+
+        team_name = str(target.getAttribute("data-team-name") or "")
+        ronde_raw = target.getAttribute("data-ronde")
+        try:
+            ronde = int(ronde_raw) if ronde_raw is not None else None
+        except (TypeError, ValueError):
+            ronde = None
+
+        self.state.pending_timeline_manual_slot = {
+            "team_name": team_name,
+            "ronde": ronde,
+        }
+
     def render_team_timeline(self, results: dict) -> None:
+        self._timeline_empty_slot_proxies = []
         timeline_element = get_element("timeline-output")
         teams = results.get("teams", [])
         matches = results.get("matches", [])
         n_rondes = int(results.get("n_rondes", 0) or 0)
         timeline_lookup: dict[str, dict[int, dict]] = defaultdict(dict)
+
+        # Fixed square footprint so all timeline slots share the same shape.
+        slot_td_style = "width: 132px; min-width: 132px; vertical-align: top;"
+        slot_box_style = (
+            "width: 100%; aspect-ratio: 1.3 / 1; min-height: 132px; padding: 10px; "
+            "box-sizing: border-box; border-radius: 10px; display: flex; flex-direction: column; "
+            "justify-content: center; align-items: center; text-align: center; overflow: hidden;"
+        )
+        empty_slot_style = (
+            slot_box_style
+            + " border: 1px dashed rgba(255,255,255,0.18); background: transparent; "
+            "color: inherit; font: inherit; cursor: pointer;"
+        )
+
         for match in matches:
             ronde = int(match["ronde"])
             veld = int(match["veld"])
@@ -367,11 +400,13 @@ class ResultsRenderer:
         if not teams:
             timeline_element.innerHTML = '<p class="muted">Geen teamdata beschikbaar.</p>'
             return
+
         header_cells = ['<th class="timeline-team-col">Team</th>']
         header_cells.extend(
-            f'<th class="timeline-round-col">Ronde {ronde}</th>'
+            f'<th class="timeline-round-col" style="{slot_td_style}">Ronde {ronde}</th>'
             for ronde in range(1, n_rondes + 1)
         )
+
         body_rows: list[str] = []
         sorted_teams = sorted(
             teams,
@@ -387,15 +422,16 @@ class ResultsRenderer:
             team_gender = str(team["gender"])
             team_age = str(team["age"])
             team_matches = str(team["matches"])
-            matches_played = str( int(team["matches"]) - int(results['remaining_required'][team_name]))
+            matches_played = str(int(team["matches"]) - int(results["remaining_required"][team_name]))
+            escaped_team_name = html.escape(team_name, quote=True)
             cells: list[str] = []
             for ronde in range(1, n_rondes + 1):
                 slot = timeline_lookup.get(team_name, {}).get(ronde)
                 if slot:
                     cells.append(
                         f"""
-                        <td class="timeline-slot">
-                          <div class="timeline-match level-{team_level}">
+                        <td class="timeline-slot" style="{slot_td_style}">
+                          <div class="timeline-match level-{team_level}" style="{slot_box_style}">
                             <div class="timeline-opponent">{html.escape(slot['opponent'])}</div>
                             <span class="timeline-subline">Veld {slot['veld']:02d}</span>
                             <span class="timeline-subline">{html.escape(slot['opponent_gender'])} ·
@@ -405,7 +441,23 @@ class ResultsRenderer:
                         """
                     )
                 else:
-                    cells.append('<td class="timeline-slot"><span class="timeline-empty">—</span></td>')
+                    cells.append(
+                        f"""
+                        <td class="timeline-slot" style="{slot_td_style}">
+                          <button
+                            type="button"
+                            class="timeline-empty-slot"
+                            data-team-name="{escaped_team_name}"
+                            data-ronde="{ronde}"
+                            aria-label="Leeg slot voor {escaped_team_name} in ronde {ronde}"
+                            title="Handmatig invullen"
+                            style="{empty_slot_style}"
+                          >
+                            <span class="timeline-empty">—</span>
+                          </button>
+                        </td>
+                        """
+                    )
             body_rows.append(
                 f"""
                 <tr>
@@ -431,6 +483,13 @@ class ResultsRenderer:
         </section>
         """
 
+        empty_slot_buttons = timeline_element.querySelectorAll(".timeline-empty-slot")
+        if empty_slot_buttons:
+            click_proxy = create_proxy(self.on_empty_timeline_slot_click)
+            self._timeline_empty_slot_proxies.append(click_proxy)
+            for button in empty_slot_buttons:
+                button.addEventListener("click", click_proxy)
+
     def render_results(self, results: dict) -> None:
         remaining_element = get_element("remaining-output")
         matches = results["matches"]
@@ -450,19 +509,4 @@ class ResultsRenderer:
         )
         self.render_table_schedule(results)
         self.render_team_timeline(results)
-        rows = []
-        for name in sorted(results["remaining_required"]):
-            rows.append(
-                f"<tr><td>{html.escape(name)}</td>"
-                f"<td>{results['remaining_required'][name]}</td>"
-            )
-        remaining_element.innerHTML = f"""
-        <section class="panel" style="padding:0; margin-top: 16px;">
-          <div class="round-header">Remaining capacity</div>
-          <table class="remaining-table">
-            <thead><tr><th>Team</th><th>Required left</th><th>Optional left</th></tr></thead>
-            <tbody>{''.join(rows)}</tbody>
-          </table>
-        </section>
-        """
         self.set_output_view(self.state.output_view)

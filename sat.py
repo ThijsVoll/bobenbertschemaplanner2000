@@ -142,10 +142,8 @@ class TournamentSchedulerSAT:
     def __init__(
         self,
         teams: List[Team],
-        preferences: List[Tuple[str, str]],
-        seed: Optional[int] = 42,
+        preferences: List[Tuple[str, str]]
     ) -> None:
-        del seed  # deterministic formulation; kept for API compatibility
 
         self.teams: Dict[str, InternalTeam] = {
             self._team_name(t): InternalTeam(
