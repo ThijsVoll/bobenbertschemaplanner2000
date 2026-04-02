@@ -368,7 +368,7 @@ class ResultsRenderer:
         # Fixed square footprint so all timeline slots share the same shape.
         slot_td_style = "width: 132px; min-width: 132px; vertical-align: top;"
         slot_box_style = (
-            "width: 100%; aspect-ratio: 1.3 / 1; min-height: 132px; padding: 10px; "
+            "width: 100%; aspect-ratio: 1.3 / 1; min-height: 120px; padding: 10px; "
             "box-sizing: border-box; border-radius: 10px; display: flex; flex-direction: column; "
             "justify-content: center; align-items: center; text-align: center; overflow: hidden;"
         )

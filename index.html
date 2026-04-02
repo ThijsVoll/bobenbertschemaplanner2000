@@ -18,7 +18,7 @@
     <header class="hero">
       <div>
         <p class="eyebrow">Thijs Vollebregt 2026</p>
-        <h1>Bob & Bert schema planner 2000</h1>
+        <h1>Bob &amp; Bert schema planner 2000</h1>
         <p class="lead">
           Das lekker. Hoeven Chris en Nanette het niet meer te doen
         </p>
@@ -28,15 +28,34 @@
         <div id="status" class="status status-info">Ready.</div>
 
         <div class="header-actions">
-          <button id="generate-btn">Schema genereren</button>
+          <div class="action-group">
+            <button id="generate-btn" type="button">Schema genereren</button>
+          </div>
+
+          <div class="action-group">
+            <input id="teams-csv-file" type="file" accept=".csv,text/csv" hidden />
+            <button id="teams-csv-trigger" type="button" class="button button-secondary">
+              Teams uploaden
+            </button>
+            <span id="teams-csv-feedback" class="muted small"></span>
+          </div>
+
+          <div class="action-group">
+            <input id="prefs-csv-file" type="file" accept=".csv,text/csv" hidden />
+            <button id="prefs-csv-trigger" type="button" class="button button-secondary">
+              Voorkeuren uploaden
+            </button>
+            <span id="prefs-csv-feedback" class="muted small"></span>
+          </div>
         </div>
       </div>
     </header>
 
 
+
     <section class="grid">
       <section class="panel">
-        <h2>Invoer</h2>
+        <h2>Wedstrijd opties</h2>
 
         <div class="field-row params">
           <label>
@@ -45,62 +64,53 @@
           </label>
           <label>
             <span>Aantal velden</span>
-            <input id="n-velden" type="number" min="1" value="12" />
+            <input id="n-velden" type="number" min="1" max="12" value="8" />
           </label>
         </div>
-
-        <label class="field-block">
-          <span>Teams CSV importeren</span>
-          <div class="field-row" style="align-items: end; gap: 12px; flex-wrap: wrap;">
-            <input id="teams-csv-file" type="file" accept=".csv,text/csv" />
-          </div>
-          <small class="muted">
-            Verwachtte kolommen: name, level, gender, age.
-          </small>
-        </label>
 
         <!-- === Teams beheren (inline add/remove) === -->
         <section class="field-block">
           <h2>Teams beheren</h2>
 
-          <div class="field-row" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 12px; align-items: end;">
-  <label>
-    <span>Naam</span>
-    <input id="new-team-name" type="text" placeholder="Teamname" />
-  </label>
+          <div class="field-row"
+            style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 12px; align-items: end;">
+            <label>
+              <span>Naam</span>
+              <input id="new-team-name" type="text" placeholder="Teamname" />
+            </label>
 
-  <label>
-    <span>Geslacht</span>
-    <select id="new-team-gender">
-      <option value="Mixed">Mixed</option>
-      <option value="Heren">Heren</option>
-      <option value="Dames">Dames</option>
-    </select>
-  </label>
+            <label>
+              <span>Geslacht</span>
+              <select id="new-team-gender">
+                <option value="Mixed">Mixed</option>
+                <option value="Heren">Heren</option>
+                <option value="Dames">Dames</option>
+              </select>
+            </label>
 
-  <label>
-    <span>Leeftijd</span>
-    <select id="new-team-age">
-      <option value="Jong">Jong</option>
-      <option value="Oud">Oud</option>
-    </select>
-  </label>
+            <label>
+              <span>Leeftijd</span>
+              <select id="new-team-age">
+                <option value="Jong">Jong</option>
+                <option value="Oud">Oud</option>
+              </select>
+            </label>
 
-  <label>
-    <span>Niveau</span>
-    <input id="new-team-level" type="number" min="1" max="3" value="1" />
-  </label>
+            <label>
+              <span>Niveau</span>
+              <input id="new-team-level" type="number" min="1" max="3" value="1" />
+            </label>
 
-  <label>
-    <span>Wedstrijden</span>
-    <input id="new-team-matches" type="number" min="1" max="3" value="1" />
-  </label>
+            <label>
+              <span>Wedstrijden</span>
+              <input id="new-team-matches" type="number" min="1" max="3" value="1" />
+            </label>
 
-  <button id="add-team-btn" type="button" class="secondary">Team toevoegen</button>
-</div>
+            <button id="add-team-btn" type="button" class="secondary">Team toevoegen</button>
+          </div>
 
 
-     
+
 
           <!-- Live list of current teams -->
           <div id="teams-list" class="summary-card" style="margin-top: 12px;"></div>
@@ -111,15 +121,6 @@
           <textarea id="teams-json" spellcheck="false" hidden></textarea>
         </label>
 
-        <label class="field-block">
-          <span>Voorkeuren CSV importeren</span>
-          <div class="field-row" style="align-items: end; gap: 12px; flex-wrap: wrap;">
-            <input id="prefs-csv-file" type="file" accept=".csv,text/csv" />
-          </div>
-          <small class="muted">
-            Verwachtte kolommen: teamA, teamB
-          </small>
-        </label>
 
         <section class="field-block">
           <h2>Voorkeur wedstrijden</h2>
@@ -150,19 +151,19 @@
         <h2>Output</h2>
 
         <div class="output-toolbar">
-  <div class="view-toggle" role="tablist" aria-label="Outputweergave">
-    <button id="view-table-btn" type="button" class="secondary is-active">
-      Wedstrijden
-    </button>
-    <button id="view-timeline-btn" type="button" class="secondary">
-      Team timeline
-    </button>
-  </div>
+          <div class="view-toggle" role="tablist" aria-label="Outputweergave">
+            <button id="view-table-btn" type="button" class="secondary is-active">
+              Wedstrijden
+            </button>
+            <button id="view-timeline-btn" type="button" class="secondary">
+              Team timeline
+            </button>
+          </div>
 
-  <button id="export-excel" class="secondary toolbar-export">
-    ⬇ Exporteren als Excel
-  </button>
-</div>
+          <button id="export-excel" class="secondary toolbar-export">
+            ⬇ Exporteren als Excel
+          </button>
+        </div>
 
 
 
@@ -178,6 +179,39 @@
   </main>
 
   <script type="py" src="./app.py" config="./pyscript.toml"></script>
+
+  <script>
+    const teamsCsvFile = document.getElementById("teams-csv-file");
+    const prefsCsvFile = document.getElementById("prefs-csv-file");
+
+    const teamsCsvTrigger = document.getElementById("teams-csv-trigger");
+    const prefsCsvTrigger = document.getElementById("prefs-csv-trigger");
+
+    const primaryGenerateBtn = document.getElementById("generate-btn");
+    const secondaryGenerateBtn = document.getElementById("generate-btn-secondary");
+
+    if (teamsCsvTrigger && teamsCsvFile) {
+      teamsCsvTrigger.addEventListener("click", () => {
+        teamsCsvFile.value = "";
+        teamsCsvFile.click();
+      });
+    }
+
+    if (prefsCsvTrigger && prefsCsvFile) {
+      prefsCsvTrigger.addEventListener("click", () => {
+        prefsCsvFile.value = "";
+        prefsCsvFile.click();
+      });
+    }
+
+    if (secondaryGenerateBtn && primaryGenerateBtn) {
+      secondaryGenerateBtn.addEventListener("click", () => {
+        primaryGenerateBtn.click();
+      });
+    }
+  </script>
+
+
 </body>
 
 </html>
