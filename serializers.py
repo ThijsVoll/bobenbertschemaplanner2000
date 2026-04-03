@@ -61,6 +61,7 @@ def build_excel_overview_rows(results: dict) -> list[list]:
 
 
 def build_excel_matches_rows(results: dict) -> list[list]:
+    print(results)
     rows = [[
         "Ronde",
         "Veld",
