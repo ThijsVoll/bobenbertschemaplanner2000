@@ -117,6 +117,7 @@ class AppController:
             csv_text = await file.text()
             prefs = InputRepository.parse_prefs_csv_text(str(csv_text))
             get_element("prefs-json").value = json.dumps(prefs, indent=2, ensure_ascii=False)
+            print(json.dumps(prefs, indent=2, ensure_ascii=False))
             self.sync_preferences_ui()
             self.teams_renderer.render()
             set_status(f"{len(prefs)} teams geimporteerd van {file.name}.", "success")
@@ -134,6 +135,7 @@ class AppController:
         get_element("teams-json").value = json.dumps(EXAMPLE_TEAMS, indent=2, ensure_ascii=False)
         get_element("prefs-json").value = json.dumps(EXAMPLE_PREFS, indent=2, ensure_ascii=False)
         self.sync_preferences_ui()
+        self.teams_renderer.render()
         set_status("Loaded example dataset.", "success")
 
     def on_add_preference(self, *args) -> None:
@@ -241,5 +243,6 @@ class AppController:
         self.init_fields()
         self.wire_events()
         self.sync_preferences_ui()
-        self.results_renderer.set_output_view("table")
+        self.results_renderer.set_output_view("timeline")
         self.teams_renderer.render()
+        self.load_example_data()
