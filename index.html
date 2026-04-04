@@ -180,6 +180,16 @@
 
   <script type="py" src="./app.py" config="./pyscript.toml"></script>
 
+  <!-- Add this next to your main PyScript script tag -->
+  <script
+    type="py"
+    src="./scheduler_worker.py"
+    worker
+    name="scheduler"
+    config="./pyscript-worker.toml"
+  ></script>
+
+
   <script>
     const teamsCsvFile = document.getElementById("teams-csv-file");
     const prefsCsvFile = document.getElementById("prefs-csv-file");

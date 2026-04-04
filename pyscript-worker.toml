@@ -1,0 +1,7 @@
+packages = ["python-sat"]
+
+[files]
+"./scheduler_worker.py" = "./scheduler_worker.py"
+"./models.py" = "./models.py"
+"./sat.py" = "./sat.py"
+"./serializers.py" = "./serializers.py"

@@ -1,12 +1,13 @@
 from __future__ import annotations
-
 import asyncio
 import json
 import random
 from typing import Optional
 
 from browser import console, create_proxy, document, get_element, set_status
-from constants import  EXAMPLE_PREFS, EXAMPLE_TEAMS
+from pyscript import workers
+
+from constants import EXAMPLE_PREFS, EXAMPLE_TEAMS
 from data_access import InputRepository
 from exporters import ExcelExporter
 from renderers import PreferencesRenderer, ResultsRenderer, TeamsRenderer
@@ -15,6 +16,19 @@ from sat import TournamentSchedulerSAT as TournamentScheduler
 from serializers import serialize_results
 from state import AppState
 
+def _maybe_to_py(value):
+    """Convert Pyodide/PyScript JsProxy values into normal Python values."""
+    if hasattr(value, "to_py"):
+        try:
+            value = value.to_py(depth=10)
+        except TypeError:
+            value = value.to_py()
+
+    if isinstance(value, dict):
+        return {str(key): _maybe_to_py(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_maybe_to_py(item) for item in value]
+    return value
 
 class AppController:
     """Coordinates data access, scheduling logic and UI updates."""
@@ -30,6 +44,9 @@ class AppController:
         )
         self.excel_exporter = ExcelExporter()
 
+        # Worker state
+        self._scheduler_worker = None
+
     def init_fields(self) -> None:
         teams_element = get_element("teams-json")
         prefs_element = get_element("prefs-json")
@@ -40,6 +57,36 @@ class AppController:
 
     def sync_preferences_ui(self) -> None:
         self.preferences_renderer.sync()
+
+    def _serialize_team_for_worker(self, team) -> dict:
+        return {
+            "level": int(team.level),
+            "gender": str(team.gender),
+            "name": str(team.name),
+            "age": str(team.age),
+            "matches": int(team.matches),
+        }
+
+    async def _get_scheduler_worker(self):
+        if self._scheduler_worker is None:
+            self._scheduler_worker = await workers["scheduler"]
+        return self._scheduler_worker
+
+    async def _warm_scheduler_worker(self) -> None:
+        try:
+            await self._get_scheduler_worker()
+        except Exception as exc:
+            console.error(f"Worker warmup failed: {exc}")
+
+    async def generate_in_worker(self, teams, prefs, n_rondes, n_velden) -> dict:
+        scheduler_worker = await self._get_scheduler_worker()
+        payload = {
+            "teams": [self._serialize_team_for_worker(team) for team in teams],
+            "prefs": [[a, b] for a, b in prefs],
+            "n_rondes": int(n_rondes),
+            "n_velden": int(n_velden),
+        }
+        return await scheduler_worker.generate_schedule_worker(payload)
 
     def on_add_team(self, *args) -> None:
         try:
@@ -61,8 +108,7 @@ class AppController:
             try:
                 wedstrijden = int(wedstrijden_text)
             except Exception as exc:
-                raise ValueError("wedstijden moet een geheel getal zijn.") from exc
-            
+                raise ValueError("wedstrijden moet een geheel getal zijn.") from exc
             if name in set(InputRepository.get_team_names()):
                 raise ValueError(f"Teamname '{name}' bestaat al. Kies een unieke name.")
             current = InputRepository.get_team_dicts()
@@ -72,7 +118,7 @@ class AppController:
                     "gender": gender,
                     "name": name,
                     "age": age,
-                    "wedstrijden": wedstrijden
+                    "wedstrijden": wedstrijden,
                 }
             )
             InputRepository.set_teams_json(current)
@@ -171,32 +217,31 @@ class AppController:
         self.preferences_renderer.render()
 
     def on_generate(self, *args) -> None:
+        asyncio.create_task(self.on_generate_async())
+
+    async def on_generate_async(self) -> None:
+        btn = get_element("generate-btn")
+        btn.disabled = True
+        set_status("Schema genereren...", "info")
+
         try:
-            teams, prefs, n_rondes, n_velden= InputRepository.read_inputs()
-            scheduler = TournamentScheduler(teams=teams, preferences=prefs)
+            # Let the browser repaint before starting the heavy worker call.
+            await asyncio.sleep(0)
 
-            ok = True
-            wedstrijden, rest_verplicht = scheduler.generate_schedule(
-                n_rondes,
-                n_velden
-            )
- 
-            self.state.last_result = serialize_results(
-                teams,
-                wedstrijden,
-                rest_verplicht,
-                n_rondes,
-            )
+            teams, prefs, n_rondes, n_velden = InputRepository.read_inputs()
+            result = await self.generate_in_worker(teams, prefs, n_rondes, n_velden)
+            result = _maybe_to_py(result)
+            self.state.last_result = result["last_result"]
             self.results_renderer.render_results(self.state.last_result)
-
-            if ok:
-                set_status(f"Succesvol {len(wedstrijden)} wedstrijden gegenereerd.", "success")
-            else:
-                set_status("Combinatie niet mogelijk (node-/tijdlimiet bereikt).", "error")
-
+            set_status(
+                f"Succesvol {result['num_matches']} wedstrijden gegenereerd.",
+                "success",
+            )
         except Exception as exc:
             console.error(str(exc))
             set_status(f"Error: {exc}", "error")
+        finally:
+            btn.disabled = False
 
     def on_export_excel(self, *args) -> None:
         if self.state.last_result is None:
@@ -226,7 +271,7 @@ class AppController:
             create_proxy(self.on_view_timeline),
             create_proxy(self.on_export_excel),
             create_proxy(self.on_add_team),
-            create_proxy(self.on_prefs_csv_selected)
+            create_proxy(self.on_prefs_csv_selected),
         ]
         get_element("generate-btn").addEventListener("click", self.state.event_proxies[0])
         get_element("teams-csv-file").addEventListener("change", self.state.event_proxies[1])
@@ -246,3 +291,4 @@ class AppController:
         self.results_renderer.set_output_view("timeline")
         self.teams_renderer.render()
         self.load_example_data()
+        asyncio.create_task(self._warm_scheduler_worker())
